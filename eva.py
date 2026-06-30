@@ -7,8 +7,8 @@ import readline
 import sys
 import uuid
 
-from config import (DB_PATH, CORE_PATH, CORE_LOCAL_PATH, CORE_HIST, RAW_DIR, SESSION_DIR,
-                    LLM_BASE_URL, LLM_MODEL, AGENT_MAX_ITERATIONS)
+from config import (DB_PATH, DATA_DIR, CORE_PATH, CORE_LOCAL_PATH, CORE_HIST, RAW_DIR, SESSION_DIR,
+                    LLM_BASE_URL, LLM_MODEL, AGENT_MAX_ITERATIONS, VERSION, VERSION_DATE)
 from llm_client import LLMClient
 from memory.database import init_db
 from memory.store import MemoryStore, TaskStore
@@ -20,8 +20,71 @@ from utils.display import ok, err, warn, info, dim, head, bold
 import i18n as T
 
 
-_ANSI_RE  = re.compile(r'\x1b\[[0-9;]*m')
-_log_file = None
+_ANSI_RE     = re.compile(r'\x1b\[[0-9;]*m')
+_log_file    = None
+_PID_FILE    = os.path.join(DATA_DIR, "eva4.pid")
+_ACTIVE_FILE = os.path.join(DATA_DIR, "last_active")
+
+
+def _write_pid() -> None:
+    with open(_PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+
+def _remove_pid() -> None:
+    try:
+        os.unlink(_PID_FILE)
+    except FileNotFoundError:
+        pass
+
+
+def _touch_active() -> None:
+    with open(_ACTIVE_FILE, "w") as f:
+        f.write(datetime.datetime.now().isoformat())
+
+
+def _reflect_goal() -> str:
+    return (
+        "Perform a comprehensive strategic reflection following core.md Chapter 12 "
+        "(全面反思策略 / Comprehensive Reflection Strategy). "
+        "Collect task statistics, review AAR memories, surface pending upgrade-assessment "
+        "recommendations, and improve core.md where evidence supports it. "
+        "Do not modify any .py files or suggest code changes."
+    )
+
+
+def _run_headless(goal: str) -> None:
+    """Non-interactive single-task run (--run / --reflect). Exits when done."""
+    for d in [RAW_DIR, SESSION_DIR,
+              os.path.join(SESSION_DIR, "logs"),
+              os.path.join(SESSION_DIR, "messages"),
+              CORE_HIST]:
+        os.makedirs(d, exist_ok=True)
+
+    init_db()
+    _start_print_logger()
+    _cleanup_interrupted_state()
+
+    session_id  = uuid.uuid4().hex[:8]
+    llm         = LLMClient()
+    store       = MemoryStore()
+    task_store  = TaskStore()
+    task_memory = TaskMemory()
+    schemas, fns = build_tools(store)
+    runner = TaskRunner(
+        llm=llm, schemas=schemas, fns=fns,
+        task_store=task_store, task_memory=task_memory,
+        mem_store=store, session_id=session_id,
+    )
+
+    print(f"\n[headless {datetime.datetime.now():%Y-%m-%d %H:%M:%S}] {goal[:80]}")
+    try:
+        result = runner.run(goal)
+        print(f"\n[done] {result[:300]}")
+    except Exception as e:
+        print(f"\n[error] {e}")
+    finally:
+        _stop_print_logger()
 
 
 def main():
@@ -61,7 +124,14 @@ def main():
         pass
     readline.set_history_length(500)
 
-    print(head(T.startup_title()))
+    _write_pid()
+    _touch_active()
+
+    print(head(T.ascii_banner()))
+    print(f"  {bold(T.author_line())}")
+    print(f"  {dim(T.version_line(VERSION, VERSION_DATE))}")
+    print(f"\n  {T.identity_line()}")
+    print(T.help_text())
     avail = ok(T.online()) if llm.is_available() else err(T.offline())
     tm_counts = task_memory.count()
     n_running = tm_counts.get("running", 0)
@@ -84,18 +154,22 @@ def main():
         if not line:
             continue
 
+        _touch_active()
+
         if line.startswith("/"):
             try:
-                _handle_slash(line, llm, store, task_store, task_memory, schemas, fns)
+                _handle_slash(line, llm, store, task_store, task_memory, schemas, fns, runner)
             except SystemExit:
                 readline.write_history_file(_history_file)
                 _stop_print_logger()
+                _remove_pid()
                 raise
             continue
 
         _run_task(line, runner)
 
     _stop_print_logger()
+    _remove_pid()
 
 
 def _run_task(goal: str, runner: TaskRunner):
@@ -112,7 +186,7 @@ def _run_task(goal: str, runner: TaskRunner):
 
 # ── 斜杠命令 ──────────────────────────────────────────────
 
-def _handle_slash(line: str, llm, store, task_store, task_memory, schemas, fns):
+def _handle_slash(line: str, llm, store, task_store, task_memory, schemas, fns, runner=None):
     parts = line[1:].split(None, 2)
     cmd  = parts[0].lower() if parts else ""
     sub  = parts[1].lower() if len(parts) > 1 else ""
@@ -156,6 +230,15 @@ def _handle_slash(line: str, llm, store, task_store, task_memory, schemas, fns):
 
     elif cmd == "reset":
         _do_reset(store, task_store, task_memory)
+
+    elif cmd == "reflect":
+        if runner is None:
+            print(warn("reflect not available in this context"))
+        else:
+            _reflect_cmd(runner)
+
+    elif cmd == "schedule":
+        _schedule_cmd(sub, rest)
 
     else:
         print(warn(T.unknown_command(cmd)))
@@ -351,6 +434,87 @@ def _do_reset(store: MemoryStore, task_store: TaskStore, task_memory: TaskMemory
     print(ok(T.reset_done()))
 
 
+def _reflect_cmd(runner: TaskRunner):
+    print(f"\n{head(T.reflect_title())}")
+    print(dim(T.reflect_hint()))
+    print()
+    _run_task(_reflect_goal(), runner)
+
+
+def _schedule_cmd(sub: str, rest: str):
+    from memory.schedule import ScheduledTaskStore
+    sched = ScheduledTaskStore()
+
+    if not sub or sub == "list":
+        tasks = sched.list_all()
+        if not tasks:
+            print(T.schedule_empty())
+            return
+        print(head(T.schedule_title(len(tasks))))
+        for t in tasks:
+            status   = ok("on ") if t["enabled"] else dim("off")
+            schedule = t["schedule_type"]
+            if t["schedule_type"] == "weekly":
+                schedule += f" {t['schedule_day']}"
+            schedule += f" {t['schedule_time']}"
+            last = t["last_run"] or T.schedule_never()
+            print(f"  [{t['id']}] {status} {bold(t['name'])}  @ {schedule}")
+            print(f"       {dim(t['goal'][:70])}")
+            print(f"       {dim(T.schedule_last_run(last))}")
+        print()
+
+    elif sub == "add":
+        print(head(T.schedule_add_title()))
+        name = input(f"  {T.schedule_prompt_name()} ").strip()
+        if not name:
+            print(T.schedule_cancelled()); return
+        goal = input(f"  {T.schedule_prompt_goal()} ").strip()
+        if not goal:
+            print(T.schedule_cancelled()); return
+        stype = ""
+        while stype not in ("daily", "weekly"):
+            stype = input(f"  {T.schedule_prompt_freq()} ").strip().lower()
+            if not stype:
+                print(T.schedule_cancelled()); return
+        sday = ""
+        if stype == "weekly":
+            valid_days = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+            while sday not in valid_days:
+                sday = input(f"  {T.schedule_prompt_day()} ").strip().lower()
+                if not sday:
+                    print(T.schedule_cancelled()); return
+        stime = ""
+        while not re.match(r'^\d{2}:\d{2}$', stime):
+            stime = input(f"  {T.schedule_prompt_time()} ").strip()
+            if not stime:
+                print(T.schedule_cancelled()); return
+        id_ = sched.add(name, goal, stype, stime, sday)
+        print(ok(T.schedule_added(id_, name, stype, sday, stime)))
+
+    elif sub in ("on", "off"):
+        if not rest:
+            print(warn(f"Usage: /schedule {sub} <id>")); return
+        if sched.toggle(rest, sub == "on"):
+            print(ok(T.schedule_toggled(rest, sub == "on")))
+        else:
+            print(err(T.schedule_not_found(rest)))
+
+    elif sub == "del":
+        if not rest:
+            print(warn("Usage: /schedule del <id>")); return
+        confirm = input(T.schedule_del_confirm(rest)).strip().lower()
+        if confirm == "y":
+            if sched.delete(rest):
+                print(ok(T.schedule_deleted(rest)))
+            else:
+                print(err(T.schedule_not_found(rest)))
+        else:
+            print(T.schedule_cancelled())
+
+    else:
+        print(warn(T.unknown_command(f"schedule {sub}")))
+
+
 def _bootstrap_core(llm: LLMClient):
     prompt = """You are EVA4, an experience-driven assistant. Generate your own core policy file (core.md).
 
@@ -473,4 +637,10 @@ def _stop_print_logger():
 
 
 if __name__ == "__main__":
-    main()
+    args = sys.argv[1:]
+    if args and args[0] == "--reflect":
+        _run_headless(_reflect_goal())
+    elif args and args[0] == "--run" and len(args) > 1:
+        _run_headless(args[1])
+    else:
+        main()

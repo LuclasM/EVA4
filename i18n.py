@@ -60,11 +60,35 @@ def sentinel_skipped() -> str:
 
 # ── eva.py: help / banners ──────────────────────────────────────────────────
 
+def ascii_banner() -> str:
+    return r"""
+███████╗██╗   ██╗ █████╗ ██╗  ██╗
+██╔════╝██║   ██║██╔══██╗██║  ██║
+█████╗  ██║   ██║███████║███████║
+██╔══╝  ╚██╗ ██╔╝██╔══██║╚════██║
+███████╗ ╚████╔╝ ██║  ██║     ██║
+╚══════╝  ╚═══╝  ╚═╝  ╚═╝     ╚═╝
+"""
+
+
+def author_line() -> str:
+    return "LU MENG  <lu@mengs.ca>"
+
+
+def version_line(version: str, date: str) -> str:
+    return _pick(f"v{version}  ·  updated {date}", f"v{version}  ·  更新于 {date}")
+
+
+def identity_line() -> str:
+    return _pick(
+        "I am EVA4 — I don't get smarter by default. I improve by reflecting and rewriting my own working method (core.md), then following it.",
+        "我是 EVA4——做一次任务不会让我自动变聪明。我靠主动复盘，把更好的方法写进自己的策略文件（core.md），下一次照着新方法做。",
+    )
+
+
 def help_text() -> str:
     return _pick(
         """
-EVA4 — Experience-driven assistant
-
   <any text>              Run a task or ask a question
 
   /help                   Show this help
@@ -78,12 +102,12 @@ EVA4 — Experience-driven assistant
   /tasks                  View task records
   /history                View work history (latest 20 task records)
   /log <task_id>          View task execution log
+  /reflect                Full strategic reflection — improves core.md methodology
+  /schedule               Manage scheduled tasks
   /reset                  Clear all memory and tasks (requires confirmation)
   /q  /quit               Quit
 """,
         """
-EVA4 — 经验驱动智能助手
-
   <任意文字>              执行任务或提问
 
   /help                   显示帮助
@@ -97,18 +121,85 @@ EVA4 — 经验驱动智能助手
   /tasks                  查看任务记录
   /history                查看工作历史（最近 20 条任务记录）
   /log <task_id>          查看任务执行日志
+  /reflect                全面反思，改进 core.md 方法论
+  /schedule               管理定时任务
   /reset                  清除所有记忆和任务（需确认）
   /q  /quit               退出
 """,
     )
 
 
+def reflect_title() -> str:
+    return _pick("Strategic Reflection", "全面反思")
+
+def reflect_hint() -> str:
+    return _pick(
+        "Analyzing task history, memory patterns, and pending recommendations…",
+        "正在分析任务历史、记忆规律和未处理建议……",
+    )
+
+def schedule_title(n: int) -> str:
+    return _pick(f"Scheduled Tasks ({n})", f"定时任务（{n} 条）")
+
+def schedule_empty() -> str:
+    return _pick("No scheduled tasks.", "暂无定时任务。")
+
+def schedule_never() -> str:
+    return _pick("never", "从未运行")
+
+def schedule_last_run(ts: str) -> str:
+    return _pick(f"last run: {ts}", f"上次运行：{ts}")
+
+def schedule_add_title() -> str:
+    return _pick("Add Scheduled Task", "添加定时任务")
+
+def schedule_prompt_name() -> str:
+    return _pick("Name:", "名称：")
+
+def schedule_prompt_goal() -> str:
+    return _pick("Goal:", "任务目标：")
+
+def schedule_prompt_freq() -> str:
+    return _pick("Frequency [daily/weekly]:", "频率 [daily/weekly]：")
+
+def schedule_prompt_day() -> str:
+    return _pick("Day [mon/tue/wed/thu/fri/sat/sun]:", "星期 [mon/tue/wed/thu/fri/sat/sun]：")
+
+def schedule_prompt_time() -> str:
+    return _pick("Time [HH:MM]:", "时间 [HH:MM]：")
+
+def schedule_cancelled() -> str:
+    return _pick("Cancelled.", "已取消。")
+
+def schedule_added(id_: str, name: str, stype: str, sday: str, stime: str) -> str:
+    freq = f"{stype} {sday} {stime}".strip()
+    return _pick(f"Scheduled: [{id_}] {name} @ {freq}", f"已添加：[{id_}] {name} @ {freq}")
+
+def schedule_toggled(id_: str, enabled: bool) -> str:
+    state = _pick("enabled", "已启用") if enabled else _pick("disabled", "已暂停")
+    return f"[{id_}] {state}"
+
+def schedule_not_found(id_: str) -> str:
+    return _pick(f"Task [{id_}] not found.", f"未找到任务 [{id_}]。")
+
+def schedule_del_confirm(id_: str) -> str:
+    return _pick(f"Delete [{id_}]? [y/N] ", f"确认删除 [{id_}]？[y/N] ")
+
+def schedule_deleted(id_: str) -> str:
+    return _pick(f"Deleted [{id_}].", f"已删除 [{id_}]。")
+
+def ask_user_label() -> str:
+    return _pick("Agent needs your input:", "Agent 需要你的回答：")
+
+def ask_user_prompt() -> str:
+    return _pick("Your answer →", "你的回答 →")
+
+def ask_user_no_answer() -> str:
+    return _pick("(no answer provided)", "（用户未作答）")
+
+
 def core_missing() -> str:
     return _pick("⚠ core.md not found, generating initial policy…", "⚠ 未找到 core.md，正在生成初始策略…")
-
-
-def startup_title() -> str:
-    return _pick("\nEVA4 started", "\nEVA4 启动")
 
 
 def online() -> str:

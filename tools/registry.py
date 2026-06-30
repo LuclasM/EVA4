@@ -7,6 +7,7 @@ from tools.search import grep, find_files, GREP_SCHEMA, FIND_FILES_SCHEMA
 from tools.http_client import http_request, HTTP_REQUEST_SCHEMA
 from tools.memory_tools import make_memory_tools
 from tools.core_tools import core_update, CORE_UPDATE_SCHEMA
+from tools.user_input import ask_user, ASK_USER_SCHEMA
 from memory.store import MemoryStore
 
 
@@ -25,6 +26,7 @@ def build_tools(store: MemoryStore):
         WEB_FETCH_SCHEMA,
         HTTP_REQUEST_SCHEMA,
         CORE_UPDATE_SCHEMA,
+        ASK_USER_SCHEMA,
         *mem_schemas,
     ]
     fns = {
@@ -39,6 +41,7 @@ def build_tools(store: MemoryStore):
         "web_fetch":     web_fetch,
         "http_request":  http_request,
         "core_update":   core_update,
+        "ask_user":      ask_user,
         **mem_fns,
     }
     return schemas, fns

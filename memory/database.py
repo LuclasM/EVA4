@@ -51,17 +51,45 @@ def init_db():
                 record_ids   TEXT DEFAULT '[]',
                 created_at   TEXT DEFAULT (datetime('now','localtime'))
             );
+
+            CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                id            TEXT PRIMARY KEY,
+                name          TEXT NOT NULL,
+                goal          TEXT NOT NULL,
+                schedule_type TEXT NOT NULL,
+                schedule_time TEXT NOT NULL,
+                schedule_day  TEXT DEFAULT '',
+                enabled       INTEGER DEFAULT 1,
+                last_run      TEXT DEFAULT '',
+                created_at    TEXT DEFAULT (datetime('now','localtime'))
+            );
         """)
     _migrate()
 
 
 def _migrate():
-    """为已有数据库添加 embedding 列（幂等）。"""
+    """幂等迁移：为旧数据库补列/补表。"""
     with get_conn() as conn:
         try:
             conn.execute("ALTER TABLE memories ADD COLUMN embedding BLOB")
         except Exception:
-            pass  # 列已存在
+            pass
+        try:
+            conn.executescript("""
+                CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                    id            TEXT PRIMARY KEY,
+                    name          TEXT NOT NULL,
+                    goal          TEXT NOT NULL,
+                    schedule_type TEXT NOT NULL,
+                    schedule_time TEXT NOT NULL,
+                    schedule_day  TEXT DEFAULT '',
+                    enabled       INTEGER DEFAULT 1,
+                    last_run      TEXT DEFAULT '',
+                    created_at    TEXT DEFAULT (datetime('now','localtime'))
+                );
+            """)
+        except Exception:
+            pass
 
 
 @contextmanager

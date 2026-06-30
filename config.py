@@ -17,6 +17,9 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
+VERSION      = "1.0.0"
+VERSION_DATE = "2026-06-30"
+
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR     = os.path.join(BASE_DIR, "data")
 DB_PATH      = os.path.join(DATA_DIR, "eva4.db")
