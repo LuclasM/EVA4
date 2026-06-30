@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 
 def _load_dotenv() -> None:
@@ -17,10 +18,24 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-VERSION      = "1.0.0"
-VERSION_DATE = "2026-06-30"
-
 BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+
+
+def _git(args: list[str]) -> str:
+    try:
+        return subprocess.check_output(
+            ["git"] + args, cwd=BASE_DIR, stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        return ""
+
+
+_VERSION_BASE = "1.0"
+_build        = _git(["rev-list", "--count", "HEAD"]) or "0"
+_date         = _git(["log", "-1", "--format=%cd", "--date=short"]) or "unknown"
+
+VERSION      = f"{_VERSION_BASE}.{_build}"
+VERSION_DATE = _date
 DATA_DIR     = os.path.join(BASE_DIR, "data")
 DB_PATH      = os.path.join(DATA_DIR, "eva4.db")
 CORE_PATH    = os.path.join(DATA_DIR, "core.md")
