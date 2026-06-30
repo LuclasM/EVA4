@@ -81,8 +81,8 @@ def version_line(version: str, date: str) -> str:
 
 def identity_line() -> str:
     return _pick(
-        "I am EVA4 — I don't get smarter by default. I improve by reflecting and rewriting my own working method (core.md), then following it.",
-        "我是 EVA4——做一次任务不会让我自动变聪明。我靠主动复盘，把更好的方法写进自己的策略文件（core.md），下一次照着新方法做。",
+        "I am EVA4, a self-evolving agent. Give me time, and I'll grow alongside you.",
+        "我是 EVA4，一个能自我进化的智能体。给我时间，让我陪你成长。",
     )
 
 
