@@ -8,6 +8,8 @@ the conversation content, not by the scaffold prompt's language.
 
 Usage: import i18n as T; print(T.startup_banner())
 """
+import random
+
 from config import LANG
 
 _ZH = (LANG == "zh")
@@ -79,11 +81,54 @@ def version_line(version: str, date: str) -> str:
     return _pick(f"v{version}  ·  updated {date}", f"v{version}  ·  更新于 {date}")
 
 
+_TIPS_ZH = [
+    "每次反思之后，我会把更好的方法写进自己的策略文件——下一次做得更好，不是靠承诺，是靠改变。",
+    "我有记忆。你告诉我的事，我会记住；做过的任务，我会留痕。不是当场聪明，是越用越懂你。",
+    "任务中途觉得方向不对？按一下 Ctrl-C 暂停，告诉我该怎么调整，我继续。不需要重头来过。",
+    "遇到不清楚的地方，我会先问你，不会蒙着头往前冲。把目标搞清楚，比快速开始更重要。",
+    "你可以设定定时任务，让我在固定时间帮你做事。不用每次都来找我，我会自己醒来。",
+    "每天凌晨四点，如果系统闲置超过一小时，我会自己做一次全面反思，把发现的问题写进策略。",
+    "失败了我不会假装没事。连续出错会触发自我评估，找到问题，改进方法，再试。",
+    "用 /reflect 可以随时让我做一次深度复盘——不只看最近，是把所有记录都拿出来想清楚。",
+    "我的「聪明」存在两个地方：记忆库里的经验，和 core.md 里的工作方法。两者都会随时间变好。",
+    "我能上网搜索、读文件、跑代码、发请求。工具不是目的，把你的事做完才是。",
+    "第一次见面，我什么都不了解你。多用一段时间，我就开始懂你了。",
+    "用 /core 可以看我现在的工作方法，用 /memory 可以看我记住了什么。我对你没有秘密。",
+    "一次任务做完，我会从中提取有用的经验存进记忆。下次遇到类似的事，不会再从零开始。",
+    "我不是聊天机器人，也不是搜索引擎。我是一个会做事、会学习、会记住你的工作伙伴。",
+    "尽量多的让我做事情，尽量多的给我指示。不要怕我失败，做的越多失败越多我越聪明。",
+]
+
+_TIPS_EN = [
+    "After each reflection, I rewrite my own strategy file with better methods. Improvement through action, not promises.",
+    "I have memory. What you tell me, I keep. Tasks I've done leave traces. Not smart all at once — smarter over time.",
+    "Task going sideways? Hit Ctrl-C to pause, give me a correction, and I'll keep going. No need to start over.",
+    "When something's unclear, I'll ask before charging ahead. Getting the goal right matters more than starting fast.",
+    "You can set scheduled tasks — I'll wake up at the right time and get things done without you having to ask.",
+    "At 4am every night, if I've been idle for over an hour, I run a full self-reflection and update my strategy.",
+    "Failures don't get swept under the rug. Repeated errors trigger self-evaluation — find the issue, fix the method.",
+    "Use /reflect anytime for a deep review — not just recent work, but everything, thought through properly.",
+    "My 'intelligence' lives in two places: memory (experience) and core.md (method). Both improve over time.",
+    "I can search the web, read files, run code, make requests. Tools aren't the point — getting things done is.",
+    "First meeting, I know nothing about you. Give it some time, and I'll start to understand how you work.",
+    "Use /core to see my current working method, /memory to see what I remember. No secrets.",
+    "After each task, I extract useful experience into memory. Next time something similar comes up, I won't start from zero.",
+    "Not a chatbot. Not a search engine. A working partner that gets things done, learns, and remembers you.",
+    "Give me as much work as you can. The more I do, the more I fail — and the smarter I get. Don't hold back.",
+]
+
+
 def identity_line() -> str:
     return _pick(
         "I am EVA4, a self-evolving agent. Give me time, and I'll grow alongside you.",
         "我是 EVA4，一个能自我进化的智能体。给我时间，让我陪你成长。",
     )
+
+
+def tips_line() -> str:
+    tip = random.choice(_TIPS_ZH) if _ZH else random.choice(_TIPS_EN)
+    label = "提示" if _ZH else "Tips"
+    return f"  {label}：{tip}"
 
 
 def help_text() -> str:
@@ -126,6 +171,21 @@ def help_text() -> str:
   /reset                  清除所有记忆和任务（需确认）
   /q  /quit               退出
 """,
+    )
+
+
+def startup_hint() -> str:
+    return _pick(
+        (
+            "  /help  show all commands    /quit  exit\n"
+            "  Ctrl-C  ① during task: pause & add instructions"
+            "  ② again: stop task  ③ at prompt: exit"
+        ),
+        (
+            "  /help  查看所有命令    /quit  退出\n"
+            "  Ctrl-C  ① 任务中：暂停并补充指令"
+            "  ② 再按：停止任务  ③ 空闲时：退出系统"
+        ),
     )
 
 

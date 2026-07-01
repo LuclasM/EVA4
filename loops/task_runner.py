@@ -54,9 +54,9 @@ class TaskRunner:
         self._persist(record_id, root, "running", "", [], started)
         root_task = {"id": record_id, "goal": goal, "status": "active", "log": "", "result": ""}
         self.task_store.save(root_task)
-        history_ctx = self.task_memory.build_context(goal)
 
         try:
+            history_ctx = self.task_memory.build_context(goal)
             self._run_node(root, root, record_id, started, history_ctx, mem_id, depth=0)
         except KeyboardInterrupt:
             self._mark_interrupted(root)

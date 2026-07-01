@@ -7,7 +7,7 @@ import readline
 import sys
 import uuid
 
-from config import (DB_PATH, DATA_DIR, CORE_PATH, CORE_LOCAL_PATH, CORE_HIST, REFLECT_PATH,
+from config import (BASE_DIR, DB_PATH, DATA_DIR, CORE_PATH, CORE_LOCAL_PATH, CORE_HIST, REFLECT_PATH,
                     RAW_DIR, SESSION_DIR, LLM_BASE_URL, LLM_MODEL, AGENT_MAX_ITERATIONS,
                     VERSION, VERSION_DATE)
 from llm_client import LLMClient
@@ -102,6 +102,7 @@ def main():
     _start_print_logger()
     _cleanup_interrupted_state()
     _migrate_embeddings()
+    _ensure_cron()
 
     session_id  = uuid.uuid4().hex[:8]
     llm         = LLMClient()
@@ -135,7 +136,8 @@ def main():
     print(f"  {bold(T.author_line())}")
     print(f"  {dim(T.version_line(VERSION, VERSION_DATE))}")
     print(f"\n  {T.identity_line()}")
-    print(T.help_text())
+    print(f"  {dim(T.tips_line())}")
+    print(f"\n{dim(T.startup_hint())}")
     avail = ok(T.online()) if llm.is_available() else err(T.offline())
     tm_counts = task_memory.count()
     n_running = tm_counts.get("running", 0)
@@ -606,6 +608,11 @@ def _cleanup_interrupted_state() -> None:
             "UPDATE task_records SET tier='active', summary=? WHERE tier='running'",
             (T.sentinel_abnormal_interrupt(),)
         ).rowcount
+        # tasks 表里 status='active' 的记录是上次被中断没来得及清理的，标记为 failed
+        conn.execute(
+            "UPDATE tasks SET status='failed', result=? WHERE status='active'",
+            (T.sentinel_abnormal_interrupt(),)
+        )
     if n:
         print(warn(T.cleaned_interrupted_records(n)))
     mem = MemoryStore()
@@ -631,6 +638,20 @@ def _migrate_embeddings() -> None:
     print(info(T.embedding_migrating(missing)))
     n = store.migrate_embeddings()
     print(ok(T.embedding_migrated(n)))
+
+
+def _ensure_cron() -> None:
+    """确保 cron_runner.py 已注册到 crontab，没有则自动添加。"""
+    import subprocess
+    cron_entry = f"* * * * * /usr/bin/python3 {BASE_DIR}/cron_runner.py >> {DATA_DIR}/sessions/logs/cron.log 2>&1"
+    try:
+        existing = subprocess.check_output(["crontab", "-l"], stderr=subprocess.DEVNULL).decode()
+    except subprocess.CalledProcessError:
+        existing = ""
+    if "cron_runner.py" not in existing:
+        new_crontab = existing.rstrip("\n") + "\n" + cron_entry + "\n"
+        subprocess.run(["crontab", "-"], input=new_crontab.encode(), check=True)
+        print(ok("✓ cron_runner registered in crontab"))
 
 
 def _stop_print_logger():

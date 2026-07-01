@@ -89,10 +89,15 @@ def _check_scheduled(now: datetime.datetime) -> None:
         conn.close()
         return
 
+    today_date = now.strftime("%Y-%m-%d")
+
     for row in rows:
         if row["schedule_time"] != now_hhmm:
             continue
-        if row["schedule_type"] == "weekly" and row["schedule_day"] != today:
+        stype = row["schedule_type"]
+        if stype == "weekly" and row["schedule_day"] != today:
+            continue
+        if stype == "once" and row["schedule_day"] != today_date:
             continue
         last_run = row["last_run"] or ""
         if last_run.startswith(now.strftime("%Y-%m-%d %H:%M")):
@@ -104,6 +109,10 @@ def _check_scheduled(now: datetime.datetime) -> None:
         conn.commit()
         _log(f"scheduled task [{row['id']}] '{row['name']}' triggered")
         _launch(["--run", row["goal"]], f"sched_{row['id']}")
+        if stype == "once":
+            conn.execute("DELETE FROM scheduled_tasks WHERE id=?", (row["id"],))
+            conn.commit()
+            _log(f"one-time task [{row['id']}] deleted after trigger")
 
     conn.close()
 
