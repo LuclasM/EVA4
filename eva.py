@@ -160,6 +160,11 @@ def main():
 
         _touch_active()
 
+        if line.lower() in ("exit", "quit", "q"):
+            readline.write_history_file(_history_file)
+            print(T.goodbye_nl())
+            break
+
         if line.startswith("/"):
             try:
                 _handle_slash(line, llm, store, task_store, task_memory, schemas, fns, runner)
