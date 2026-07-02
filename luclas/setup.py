@@ -197,25 +197,19 @@ def _step_llm() -> dict[str, str]:
 # ── Step 2: Messaging platform ────────────────────────────────────────────────
 
 _MSG_OPTIONS = [
-    ("wecom", "WeCom / 企业微信"),
-    ("none",  "Skip — use terminal only"),
+    ("wecom",    "WeCom / 企业微信"),
+    ("whatsapp", "WhatsApp  (Meta Business Cloud API)"),
+    ("discord",  "Discord   (Bot)"),
+    ("none",     "Skip — use terminal only"),
 ]
 
 
-def _step_messaging() -> dict[str, str]:
-    _section("Step 2 · Messaging Platform")
-    print("  Connect a messaging platform so Luclas can send")
-    print("  you results and progress updates outside the terminal.")
-
-    platform = _choose("Which platform?", _MSG_OPTIONS)
-    if platform != "wecom":
-        return {}
-
+def _setup_wecom() -> dict[str, str]:
     print("\n  You'll need the following from the WeCom admin panel:")
-    print("    · Corp ID            企业管理后台 → 我的企业 → 企业ID")
-    print("    · App Agent ID       应用管理 → 自建 → AgentId")
-    print("    · App Secret         应用管理 → 自建 → Secret")
-    print("    · Callback Token & EncodingAESKey   应用 → 接收消息 → 设置")
+    print("    · Corp ID             企业管理后台 → 我的企业 → 企业ID")
+    print("    · App Agent ID        应用管理 → 自建 → AgentId")
+    print("    · App Secret          应用管理 → 自建 → Secret")
+    print("    · Token & AES Key     应用 → 接收消息 → 设置API接收")
     print()
 
     corp_id  = _ask("WECOM_CORP_ID")
@@ -223,26 +217,91 @@ def _step_messaging() -> dict[str, str]:
     secret   = _ask("WECOM_SECRET")
     token    = _ask("WECOM_TOKEN")
     aes_key  = _ask("WECOM_ENCODING_AES_KEY")
-
-    print()
-    print("  LUC_API_BASE is the public URL Luclas is reachable at.")
-    print("  WeCom will POST incoming messages to: {LUC_API_BASE}/wecom/callback")
-    api_base = _ask("LUC_API_BASE (public URL)", "https://your-domain.com")
-
-    print()
-    print("  LUC_API_KEY protects the HTTP API. Leave empty to disable auth.")
-    api_key  = _ask("LUC_API_KEY (optional)", "")
-
-    result: dict[str, str] = {
+    return {
         "WECOM_CORP_ID":          corp_id,
         "WECOM_AGENT_ID":         agent_id,
         "WECOM_SECRET":           secret,
         "WECOM_TOKEN":            token,
         "WECOM_ENCODING_AES_KEY": aes_key,
-        "LUC_API_BASE":           api_base,
     }
+
+
+def _setup_whatsapp() -> dict[str, str]:
+    print("\n  Uses the Meta WhatsApp Business Cloud API (free tier available).")
+    print("  Steps to get credentials:")
+    print("    1. Go to developers.facebook.com → My Apps → Create App")
+    print("    2. Add 'WhatsApp' product to your app")
+    print("    3. Phone Number ID    → WhatsApp → API Setup")
+    print("    4. Access Token       → WhatsApp → API Setup (temporary) or")
+    print("                           System User token from Business Settings")
+    print("    5. Webhook Verify Token — any string you choose; enter it here")
+    print("       and use the same value when registering the webhook in Meta.")
+    print()
+
+    phone_id     = _ask("WHATSAPP_PHONE_NUMBER_ID")
+    access_token = _ask("WHATSAPP_ACCESS_TOKEN")
+    verify_token = _ask("WHATSAPP_VERIFY_TOKEN  (choose any secret string)")
+    return {
+        "WHATSAPP_PHONE_NUMBER_ID": phone_id,
+        "WHATSAPP_ACCESS_TOKEN":    access_token,
+        "WHATSAPP_VERIFY_TOKEN":    verify_token,
+    }
+
+
+def _setup_discord() -> dict[str, str]:
+    print("\n  Uses a Discord Bot. Steps to get credentials:")
+    print("    1. Go to discord.com/developers/applications → New Application")
+    print("    2. Bot → Add Bot → copy the Token")
+    print("    3. OAuth2 → URL Generator → scope 'bot' → permissions:")
+    print("       Send Messages, Read Message History → invite bot to your server")
+    print("    4. Enable 'Message Content Intent' under Bot → Privileged Intents")
+    print()
+
+    bot_token  = _ask("DISCORD_BOT_TOKEN")
+    channel_id = _ask("DISCORD_CHANNEL_ID  (right-click channel → Copy Channel ID)")
+    return {
+        "DISCORD_BOT_TOKEN":  bot_token,
+        "DISCORD_CHANNEL_ID": channel_id,
+    }
+
+
+def _step_messaging() -> dict[str, str]:
+    _section("Step 2 · Messaging Platform")
+    print("  Connect a messaging platform so Luclas can push")
+    print("  results and progress updates outside the terminal.")
+
+    platform = _choose("Which platform?", _MSG_OPTIONS)
+    if platform == "none":
+        return {}
+
+    result: dict[str, str] = {}
+
+    if platform == "wecom":
+        result.update(_setup_wecom())
+    elif platform == "whatsapp":
+        result.update(_setup_whatsapp())
+    elif platform == "discord":
+        result.update(_setup_discord())
+
+    # Shared: public API URL and optional auth key
+    print()
+    print("  LUC_API_BASE — the public URL this server is reachable at.")
+    if platform == "wecom":
+        print("  WeCom will POST to: {LUC_API_BASE}/wecom/callback")
+    elif platform == "whatsapp":
+        print("  Meta will POST to:  {LUC_API_BASE}/whatsapp/callback")
+    elif platform == "discord":
+        print("  (Discord uses a bot connection, no inbound webhook needed.)")
+    print()
+    api_base = _ask("LUC_API_BASE", "https://your-domain.com")
+    result["LUC_API_BASE"] = api_base
+
+    print()
+    print("  LUC_API_KEY — optional auth key for the HTTP API. Leave empty to skip.")
+    api_key = _ask("LUC_API_KEY", "")
     if api_key:
         result["LUC_API_KEY"] = api_key
+
     return result
 
 
