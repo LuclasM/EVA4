@@ -76,9 +76,9 @@ Create `data/core.local.md` to override `data/core.md` without touching the trac
 ## Project layout
 
 ```
-luclas                   launcher script
-eva/
-  eva.py               CLI entry point, slash commands, bootstrap
+luclas.sh                launcher script
+luclas/
+  luclas.py            CLI entry point, slash commands, bootstrap
   api.py               HTTP API (FastAPI)
   cron_runner.py       scheduled task runner (crontab-driven)
   config.py            env-driven configuration
