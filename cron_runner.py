@@ -223,12 +223,7 @@ def _check_scheduled(now: datetime.datetime) -> None:
         _log(f"scheduled task [{row['id']}] '{row['name']}' triggered")
         channel = row["notify_channel"] if "notify_channel" in row.keys() else "terminal"
         if channel and channel != "terminal":
-            import threading
-            threading.Thread(
-                target=_run_via_api,
-                args=(row["goal"], channel),
-                daemon=True,
-            ).start()
+            _run_via_api(row["goal"], channel)
         else:
             _launch(["--run", row["goal"]], f"sched_{row['id']}")
         if stype == "once":

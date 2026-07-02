@@ -20,7 +20,8 @@ _ANSI_RE = None
 
 def run_agent(goal: str, task: dict, llm: LLMClient,
               schemas: list, fns: dict,
-              task_context: str = "", parent_goal: str = "") -> str:
+              task_context: str = "", parent_goal: str = "",
+              progress_callback=None) -> str:
     """
     执行一个目标，返回最终回答。
     task: dict with id, goal, log (mutated in-place)
@@ -70,6 +71,19 @@ def run_agent(goal: str, task: dict, llm: LLMClient,
             _log(task, f"Final answer: {thinking[:1000]}")
             _save_messages(task["id"], messages)
             return thinking.strip()
+
+        # 进度推送：思考摘要 + 本轮工具名列表（每轮一条）
+        if progress_callback:
+            parts = []
+            if thinking.strip():
+                first_line = thinking.strip().splitlines()[0][:120]
+                parts.append(f"💭 {first_line}")
+            for tc in tool_calls:
+                parts.append(f"▶ {tc['function']['name']}")
+            try:
+                progress_callback("\n".join(parts))
+            except Exception:
+                pass
 
         messages.append({"role": "assistant", **turn["raw"]})
 

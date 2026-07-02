@@ -106,13 +106,30 @@ class ResultResponse(BaseModel):
 # Background worker
 # ---------------------------------------------------------------------------
 
+def _make_wecom_callback(user_id: str):
+    from adapters.wecom import _send_text
+    def _cb(msg: str):
+        try:
+            _send_text(user_id, msg)
+        except Exception:
+            pass
+    return _cb
+
+
 def _run_task(task_id: str, goal: str, session_id: str) -> None:
     from tools.user_input import _NeedUserInput
     schemas, fns = build_tools(_store)
+
+    progress_callback = None
+    if session_id.startswith("wecom_"):
+        user_id = session_id[len("wecom_"):]
+        progress_callback = _make_wecom_callback(user_id)
+
     runner = TaskRunner(
         llm=_llm, schemas=schemas, fns=fns,
         task_store=_task_store, task_memory=_task_memory,
         mem_store=_store, session_id=session_id,
+        progress_callback=progress_callback,
     )
     try:
         result = runner.run(goal)

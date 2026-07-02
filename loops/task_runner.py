@@ -32,14 +32,16 @@ def _node(goal: str) -> dict:
 class TaskRunner:
 
     def __init__(self, llm, schemas, fns, task_store,
-                 task_memory: TaskMemory, mem_store, session_id: str):
-        self.llm         = llm
-        self.schemas     = schemas
-        self.fns         = fns
-        self.task_store  = task_store
-        self.task_memory = task_memory
-        self.mem_store   = mem_store
-        self.session_id  = session_id
+                 task_memory: TaskMemory, mem_store, session_id: str,
+                 progress_callback=None):
+        self.llm               = llm
+        self.schemas           = schemas
+        self.fns               = fns
+        self.task_store        = task_store
+        self.task_memory       = task_memory
+        self.mem_store         = mem_store
+        self.session_id        = session_id
+        self.progress_callback = progress_callback
         # P0-4: 升级触发机制 - 跟踪 root 任务完成情况
         self._upgrade_evaluator = UpgradeEvaluator(self.llm, self.task_memory, self.mem_store)
 
@@ -229,6 +231,7 @@ class TaskRunner:
                 node["goal"], task, self.llm, self.schemas, self.fns,
                 task_context=full_ctx,
                 parent_goal=immediate_parent,
+                progress_callback=self.progress_callback,
             )
             task["result"] = result
             task["status"] = "done"
