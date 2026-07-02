@@ -53,7 +53,7 @@ def web_fetch(url: str, max_chars: int = 6000) -> dict:
     try:
         resp = requests.get(
             url, timeout=15,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; EVA4-bot/1.0)"},
+            headers={"User-Agent": "Mozilla/5.0 (compatible; Luclas-bot/1.0)"},
         )
         resp.raise_for_status()
         text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", resp.text,

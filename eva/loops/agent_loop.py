@@ -152,7 +152,7 @@ def run_agent(goal: str, task: dict, llm: LLMClient,
 # ── 内部工具 ───────────────────────────────────────────────
 
 def _build_system(core: str, task_context: str = "", parent_goal: str = "") -> str:
-    parts = ["You are EVA4, an experience-driven assistant."]
+    parts = ["You are Luclas, an experience-driven assistant."]
     if core.strip():
         parts.append(f"\n\n=== Core Policy ===\n{core}")
     if task_context.strip():

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-EVA4 cron runner — system-level scheduler for nightly reflection and user-defined tasks.
+Luclas cron runner — system-level scheduler for nightly reflection and user-defined tasks.
 
 Add to crontab (crontab -e):
-    * * * * * /usr/bin/python3 /path/to/EVA4/eva/cron_runner.py >> /path/to/EVA4/data/sessions/logs/cron.log 2>&1
+    * * * * * /usr/bin/python3 /path/to/Luclas/eva/cron_runner.py >> /path/to/Luclas/data/sessions/logs/cron.log 2>&1
 
-This script is called every minute. It does nothing if an interactive EVA4 session
+This script is called every minute. It does nothing if an interactive Luclas session
 is currently running (checked via PID file).
 """
 import datetime
@@ -20,7 +20,7 @@ sys.path.insert(0, BASE_DIR)
 
 from config import DATA_DIR, DB_PATH
 
-_PID_FILE    = os.path.join(DATA_DIR, "eva4.pid")
+_PID_FILE    = os.path.join(DATA_DIR, "luclas.pid")
 _ACTIVE_FILE = os.path.join(DATA_DIR, "last_active")
 _LOG_DIR     = os.path.join(DATA_DIR, "sessions", "logs")
 _EVA_PY      = os.path.join(BASE_DIR, "eva.py")

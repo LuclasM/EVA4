@@ -1,40 +1,40 @@
-# EVA4 `v0.1.0`
+# Luclas `v0.1.0`
 
-EVA4 is a self-evolving AI agent. It starts empty and grows through use.
+Luclas is a self-evolving AI agent. It starts empty and grows through use.
 
-Most AI assistants are static — same behavior on day one as day one thousand. EVA4 is different: every task it runs, every mistake it makes, every correction you give it gets written into a persistent memory and a self-managed policy file (`core.md`). The agent reads its own history before acting, and can rewrite its own operating rules mid-task when it finds a better way.
+Most AI assistants are static — same behavior on day one as day one thousand. Luclas is different: every task it runs, every mistake it makes, every correction you give it gets written into a persistent memory and a self-managed policy file (`core.md`). The agent reads its own history before acting, and can rewrite its own operating rules mid-task when it finds a better way.
 
 The result is an assistant that gets meaningfully better at *your specific work* the more you use it — not better at everything in general, but better at the things you actually ask it to do.
 
 ## How growth works
 
-EVA4 has three layers of self-improvement:
+Luclas has three layers of self-improvement:
 
 1. **Experience memory** — after every task, what happened, what worked, and what failed is stored in SQLite and retrieved as context for future similar tasks. The agent learns from its own track record.
 
 2. **Self-updating policy** — `data/core.md` is the agent's operating manual. The agent can rewrite it when it identifies a better strategy. Every version is snapshotted, so you can diff the evolution over time.
 
-3. **Zero pre-loaded knowledge** — the database starts empty. Everything EVA4 knows about your domain, your workflows, your preferences, it learned from working with you. This means two EVA4 instances raised on different work will behave very differently.
+3. **Zero pre-loaded knowledge** — the database starts empty. Everything Luclas knows about your domain, your workflows, your preferences, it learned from working with you. This means two Luclas instances raised on different work will behave very differently.
 
 ## The risk: drift
 
-Because EVA4 writes its own rules, it can go wrong in ways a static assistant cannot. If it develops a bad habit — overcautious, sloppy about a certain task type, optimizing for the wrong outcome — that pattern gets reinforced across future tasks until you correct it.
+Because Luclas writes its own rules, it can go wrong in ways a static assistant cannot. If it develops a bad habit — overcautious, sloppy about a certain task type, optimizing for the wrong outcome — that pattern gets reinforced across future tasks until you correct it.
 
-**You are responsible for steering it.** EVA4 grows toward whatever behavior you reward with continued use and corrects away from whatever you explicitly push back on.
+**You are responsible for steering it.** Luclas grows toward whatever behavior you reward with continued use and corrects away from whatever you explicitly push back on.
 
 Practical safeguards:
 - Read `data/core.md` periodically. It's a plain-text file; you can edit it directly.
-- When EVA4 does something wrong, say so explicitly — "that approach was wrong because X" is more useful than silence or a vague "try again".
+- When Luclas does something wrong, say so explicitly — "that approach was wrong because X" is more useful than silence or a vague "try again".
 - Use `/history` to review what it's been doing and whether the patterns look right.
 - Use `core.md` snapshots (`/core history`) to see how its rules have changed.
 
 ## How to get the most out of it
 
-EVA4 grows faster with real work than with test questions.
+Luclas grows faster with real work than with test questions.
 
 - **Give it actual tasks**, not demos. A real failed attempt teaches more than a successful toy example.
 - **Correct it in context.** When it makes a mistake mid-task, use Ctrl-C to pause and inject the correction rather than waiting until the end.
-- **Don't over-specify.** EVA4 is designed to figure out *how* to do things. Tell it *what* you want and let it decide the approach — then correct the approach if it's wrong.
+- **Don't over-specify.** Luclas is designed to figure out *how* to do things. Tell it *what* you want and let it decide the approach — then correct the approach if it's wrong.
 - **Let it fail sometimes.** Failure with explicit feedback is the fastest path to improvement. Don't only give it easy tasks.
 
 ## Features
@@ -53,10 +53,10 @@ EVA4 grows faster with real work than with test questions.
 ```bash
 pip install -r requirements.txt
 cp .env.example .env   # set EVA_LLM_BASE_URL and EVA_LLM_MODEL
-./eva4
+./luclas
 ```
 
-On first run EVA4 generates its own `data/core.md` by asking the LLM to write an initial policy. From that point on, it owns the file.
+On first run Luclas generates its own `data/core.md` by asking the LLM to write an initial policy. From that point on, it owns the file.
 
 ## Configuration
 
@@ -76,7 +76,7 @@ Create `data/core.local.md` to override `data/core.md` without touching the trac
 ## Project layout
 
 ```
-eva4                   launcher script
+luclas                   launcher script
 eva/
   eva.py               CLI entry point, slash commands, bootstrap
   api.py               HTTP API (FastAPI)

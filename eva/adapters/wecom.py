@@ -4,7 +4,7 @@ adapters/wecom.py — 企业微信消息接收与回复
 流程：
   企微 → POST /wecom/callback（XML+AES）
        → 立即回复"处理中"
-       → 后台提交 EVA4 API
+       → 后台提交 Luclas API
        → 轮询结果
        → 主动推送结果给用户
 """

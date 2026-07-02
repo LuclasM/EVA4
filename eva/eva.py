@@ -25,7 +25,7 @@ import i18n as T
 
 _ANSI_RE     = re.compile(r'\x1b\[[0-9;]*m')
 _log_file    = None
-_PID_FILE    = os.path.join(DATA_DIR, "eva4.pid")
+_PID_FILE    = os.path.join(DATA_DIR, "luclas.pid")
 _ACTIVE_FILE = os.path.join(DATA_DIR, "last_active")
 
 
@@ -52,7 +52,7 @@ def _reflect_goal() -> str:
         with open(REFLECT_PATH, encoding="utf-8") as f:
             protocol = f"\n\n---\n{f.read()}"
     return (
-        "Perform a comprehensive strategic reflection on EVA4's recent performance. "
+        "Perform a comprehensive strategic reflection on Luclas's recent performance. "
         "Follow the protocol below exactly — do not skip data collection. "
         "Do not modify any .py files or suggest code changes."
         + protocol
@@ -529,7 +529,7 @@ def _schedule_cmd(sub: str, rest: str):
 
 
 def _bootstrap_core(llm: LLMClient):
-    prompt = """You are EVA4, an experience-driven assistant. Generate your own core policy file (core.md).
+    prompt = """You are Luclas, an experience-driven assistant. Generate your own core policy file (core.md).
 
 Content should include:
 - Identity description
@@ -552,10 +552,10 @@ Requirements: concise and actionable, every rule should directly guide behavior,
 
 
 def _write_default_core():
-    default = """# EVA4 Core Policy
+    default = """# Luclas Core Policy
 
 ## Identity
-You are EVA4, an experience-driven assistant.
+You are Luclas, an experience-driven assistant.
 
 ## Work strategy
 1. Use memory_search first to check for relevant memory

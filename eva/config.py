@@ -3,7 +3,7 @@ import subprocess
 
 
 CODE_DIR = os.path.dirname(os.path.abspath(__file__))   # eva/
-BASE_DIR = os.path.dirname(CODE_DIR)                     # EVA4/  (repo root, data root)
+BASE_DIR = os.path.dirname(CODE_DIR)                     # Luclas/ (repo root, data root)
 
 
 def _load_dotenv() -> None:
@@ -39,7 +39,7 @@ _date         = _git(["log", "-1", "--format=%cd", "--date=short"]) or "unknown"
 VERSION      = f"{_VERSION_BASE}.{_build}"
 VERSION_DATE = _date
 DATA_DIR     = os.path.join(BASE_DIR, "data")
-DB_PATH      = os.path.join(DATA_DIR, "eva4.db")
+DB_PATH      = os.path.join(DATA_DIR, "luclas.db")
 CORE_PATH        = os.path.join(DATA_DIR, "core.md")
 CORE_LOCAL_PATH  = os.path.join(DATA_DIR, "core.local.md")
 CORE_HIST        = os.path.join(DATA_DIR, "core_history")

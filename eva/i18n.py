@@ -120,8 +120,8 @@ _TIPS_EN = [
 
 def identity_line() -> str:
     return _pick(
-        "I am EVA4, a self-evolving agent. Give me time, and I'll grow alongside you.",
-        "我是 EVA4，一个能自我进化的智能体。给我时间，让我陪你成长。",
+        "I am Luclas, a self-evolving agent. Give me time, and I'll grow alongside you.",
+        "我是 Luclas，一个能自我进化的智能体。给我时间，让我陪你成长。",
     )
 
 
@@ -348,7 +348,7 @@ def status_history(active, running, archived, summarized, summaries) -> str:
 
 
 def whoami_title() -> str:
-    return _pick("EVA4 Configuration", "EVA4 配置")
+    return _pick("Luclas Configuration", "Luclas 配置")
 
 
 def whoami_model(v) -> str:

@@ -1,5 +1,5 @@
 """
-api.py — EVA4 HTTP API
+api.py — Luclas HTTP API
 
 Start:
     python api.py
@@ -35,7 +35,7 @@ from loops.task_runner import TaskRunner
 # App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="EVA4 API", version="1.0", docs_url="/docs")
+app = FastAPI(title="Luclas API", version="1.0", docs_url="/docs")
 
 from adapters.wecom import router as wecom_router
 app.include_router(wecom_router)
