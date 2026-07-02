@@ -46,14 +46,14 @@ Luclas grows faster with real work than with test questions.
 - **Messaging adapters** — receive tasks and push results via WeCom (企业微信); more platforms coming.
 - **HTTP API** — submit tasks asynchronously, poll for results, integrate with external systems.
 - **Scheduled tasks** — daily/weekly/one-shot tasks set via natural language; results routed back to the channel that created them.
-- **i18n** — CLI display language via `EVA_LANG` (`en` default, `zh` supported).
+- **i18n** — CLI display language via `LUC_LANG` (`en` default, `zh` supported).
 
 ## Quick start
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # set EVA_LLM_BASE_URL and EVA_LLM_MODEL
-./luclas
+cp .env.example .env   # set LUC_LLM_BASE_URL and LUC_LLM_MODEL
+./luclas.sh
 ```
 
 On first run Luclas generates its own `data/core.md` by asking the LLM to write an initial policy. From that point on, it owns the file.
@@ -62,12 +62,12 @@ On first run Luclas generates its own `data/core.md` by asking the LLM to write 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `EVA_LANG` | `en` | CLI display language (`en` / `zh`) |
-| `EVA_LLM_BASE_URL` | `http://localhost:8003/v1` | OpenAI-compatible endpoint |
-| `EVA_LLM_MODEL` | `qwen3.6-27b-awq-int4` | Model name |
-| `EVA_LLM_API_KEY` | `none` | API key if required |
-| `EVA_API_KEY` | _(none)_ | Auth key for the HTTP API |
-| `EVA_EMBED_MODEL` | language-dependent | sentence-transformers model for memory search |
+| `LUC_LANG` | `en` | CLI display language (`en` / `zh`) |
+| `LUC_LLM_BASE_URL` | `http://localhost:8003/v1` | OpenAI-compatible endpoint |
+| `LUC_LLM_MODEL` | `qwen3.6-27b-awq-int4` | Model name |
+| `LUC_LLM_API_KEY` | `none` | API key if required |
+| `LUC_API_KEY` | _(none)_ | Auth key for the HTTP API |
+| `LUC_EMBED_MODEL` | language-dependent | sentence-transformers model for memory search |
 
 ### Private policy customization
 
