@@ -79,6 +79,7 @@ Create `data/core.local.md` to override `data/core.md` without touching the trac
 luclas.sh                launcher script
 luclas/
   luclas.py            CLI entry point, slash commands, bootstrap
+  setup.py             interactive setup wizard (luclas setup)
   api.py               HTTP API (FastAPI)
   cron_runner.py       scheduled task runner (crontab-driven)
   config.py            env-driven configuration
@@ -94,12 +95,16 @@ luclas/
   tools/               shell/python/file/search/http/web/memory/schedule tools
   adapters/
     wecom.py           WeCom (企业微信) adapter
+    whatsapp.py        WhatsApp Business Cloud API adapter
+    discord_adapter.py Discord bot adapter
 ```
 
 ## Roadmap
 
 - [ ] **Popular LLM support** — first-class integration with OpenAI, Anthropic Claude, Google Gemini, and other hosted providers
-- [ ] **Popular messaging platforms** — Telegram, Slack, Discord, and others
+- [x] **Popular messaging platforms** — WeCom, WhatsApp, Discord supported; Telegram, Slack coming
+- [ ] **Telegram adapter**
+- [ ] **Slack adapter**
 
 ## License
 
