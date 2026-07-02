@@ -170,7 +170,7 @@ class CommandRequest(BaseModel):
 def run_command(req: CommandRequest):
     """Run a slash command synchronously and return its text output."""
     import io, contextlib, re
-    from eva import _handle_slash
+    from luc import _handle_slash
     schemas, fns = build_tools(_store)
     buf = io.StringIO()
     try:

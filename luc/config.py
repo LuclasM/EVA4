@@ -2,7 +2,7 @@ import os
 import subprocess
 
 
-CODE_DIR = os.path.dirname(os.path.abspath(__file__))   # eva/
+CODE_DIR = os.path.dirname(os.path.abspath(__file__))   # luc/
 BASE_DIR = os.path.dirname(CODE_DIR)                     # Luclas/ (repo root, data root)
 
 

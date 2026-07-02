@@ -60,7 +60,7 @@ def sentinel_skipped() -> str:
     return _pick("(skipped)", "（跳过）")
 
 
-# ── eva.py: help / banners ──────────────────────────────────────────────────
+# ── luc.py: help / banners ──────────────────────────────────────────────────
 
 def ascii_banner() -> str:
     return r"""
