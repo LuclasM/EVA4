@@ -412,9 +412,10 @@ def _write_direction(base_dir: str, note: str) -> None:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def run(base_dir: str) -> None:
-    print()
+    from i18n import ascii_banner
+    print(ascii_banner())
     print("  ┌──────────────────────────────────────────────────┐")
-    print("  │           Luclas Setup Wizard                    │")
+    print("  │              Setup Wizard                        │")
     print("  └──────────────────────────────────────────────────┘")
     print()
     print("  We'll configure your LLM, messaging platform, and")
