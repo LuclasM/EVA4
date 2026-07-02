@@ -1,4 +1,4 @@
-# EVA4
+# EVA4 `v0.1.0`
 
 EVA4 is an experience-driven AI assistant. It runs an agent loop against any
 OpenAI-compatible chat-completions endpoint (Ollama, vLLM, llama.cpp server,

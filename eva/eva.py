@@ -1,3 +1,5 @@
+__version__ = "0.1.0"
+
 import builtins
 import datetime
 import json
