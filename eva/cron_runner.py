@@ -3,7 +3,7 @@
 EVA4 cron runner — system-level scheduler for nightly reflection and user-defined tasks.
 
 Add to crontab (crontab -e):
-    * * * * * /usr/bin/python3 /home/luclas/EVA4/cron_runner.py >> /home/luclas/EVA4/data/sessions/logs/cron.log 2>&1
+    * * * * * /usr/bin/python3 /path/to/EVA4/eva/cron_runner.py >> /path/to/EVA4/data/sessions/logs/cron.log 2>&1
 
 This script is called every minute. It does nothing if an interactive EVA4 session
 is currently running (checked via PID file).
