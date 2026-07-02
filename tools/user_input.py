@@ -30,6 +30,11 @@ ASK_USER_SCHEMA = {
 
 
 def ask_user(question: str) -> str:
+    import sys
+    if not sys.stdin.isatty():
+        # 非终端（API/WeCom）：把问题抛回给调用方
+        raise _NeedUserInput(question)
+
     print(f"\n{warn('─' * 50)}")
     print(f"  {bold(T.ask_user_label())}")
     print(f"\n  {question}\n")
@@ -39,3 +44,9 @@ def ask_user(question: str) -> str:
         raise KeyboardInterrupt
     print(f"{warn('─' * 50)}\n")
     return answer if answer else T.ask_user_no_answer()
+
+
+class _NeedUserInput(Exception):
+    def __init__(self, question: str):
+        self.question = question
+        super().__init__(question)

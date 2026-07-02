@@ -13,6 +13,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+import time
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
@@ -23,8 +24,120 @@ _PID_FILE    = os.path.join(DATA_DIR, "eva4.pid")
 _ACTIVE_FILE = os.path.join(DATA_DIR, "last_active")
 _LOG_DIR     = os.path.join(DATA_DIR, "sessions", "logs")
 _EVA_PY      = os.path.join(BASE_DIR, "eva.py")
+_API_BASE    = os.environ.get("EVA_API_BASE", "http://localhost:8080")
+_API_KEY     = ""   # loaded lazily from .env
 
 _DAY_NAMES   = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+def _load_api_key() -> str:
+    global _API_KEY
+    if _API_KEY:
+        return _API_KEY
+    env_path = os.path.join(BASE_DIR, ".env")
+    try:
+        for line in open(env_path):
+            line = line.strip()
+            if line.startswith("EVA_API_KEY="):
+                _API_KEY = line.split("=", 1)[1].strip()
+                break
+    except Exception:
+        pass
+    return _API_KEY
+
+
+def _notify_wecom(user_id: str, content: str) -> None:
+    """Send content to a WeCom user via the WeCom API."""
+    import urllib.request, json as _json
+    env_path = os.path.join(BASE_DIR, ".env")
+    env = {}
+    try:
+        for line in open(env_path):
+            line = line.strip()
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                env[k.strip()] = v.strip()
+    except Exception:
+        return
+    corp_id  = env.get("WECOM_CORP_ID", "")
+    secret   = env.get("WECOM_SECRET", "")
+    agent_id = env.get("WECOM_AGENT_ID", "")
+    if not all([corp_id, secret, agent_id]):
+        _log("wecom notify: missing credentials")
+        return
+    try:
+        url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={corp_id}&corpsecret={secret}"
+        with urllib.request.urlopen(url, timeout=10) as r:
+            token_data = _json.loads(r.read())
+        token = token_data.get("access_token", "")
+        if not token:
+            _log(f"wecom notify: token error {token_data}")
+            return
+        payload = _json.dumps({
+            "touser": user_id, "msgtype": "text",
+            "agentid": int(agent_id), "text": {"content": content},
+        }).encode()
+        req = urllib.request.Request(
+            f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}",
+            data=payload, headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            result = _json.loads(r.read())
+        if result.get("errcode", 0) != 0:
+            _log(f"wecom notify: send error {result}")
+        else:
+            _log(f"wecom notify: sent to {user_id}")
+    except Exception as e:
+        _log(f"wecom notify: exception {e}")
+
+
+def _run_via_api(goal: str, notify_channel: str) -> None:
+    """Submit task to local HTTP API, poll for result, then notify."""
+    import urllib.request, json as _json
+    key = _load_api_key()
+
+    def _post(path, body):
+        data = _json.dumps(body).encode()
+        req = urllib.request.Request(
+            f"{_API_BASE}{path}", data=data,
+            headers={"X-API-Key": key, "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return _json.loads(r.read())
+
+    def _get(path):
+        req = urllib.request.Request(
+            f"{_API_BASE}{path}", headers={"X-API-Key": key},
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return _json.loads(r.read())
+
+    try:
+        r = _post("/chat", {"message": goal, "session_id": f"cron_{notify_channel}"})
+        task_id = r["task_id"]
+    except Exception as e:
+        _log(f"api submit failed: {e}")
+        return
+
+    result = None
+    for _ in range(300):
+        time.sleep(2)
+        try:
+            r = _get(f"/result/{task_id}")
+            if r["status"] in ("done", "failed"):
+                result = r.get("result", "")
+                break
+        except Exception:
+            continue
+
+    if result is None:
+        result = "⏱ 任务超时"
+
+    if notify_channel.startswith("wecom:"):
+        user_id = notify_channel[len("wecom:"):]
+        _notify_wecom(user_id, result or "✅ 完成")
+    else:
+        _log(f"task result (terminal):\n{result}")
 
 
 def _eva_running() -> bool:
@@ -108,7 +221,16 @@ def _check_scheduled(now: datetime.datetime) -> None:
         )
         conn.commit()
         _log(f"scheduled task [{row['id']}] '{row['name']}' triggered")
-        _launch(["--run", row["goal"]], f"sched_{row['id']}")
+        channel = row["notify_channel"] if "notify_channel" in row.keys() else "terminal"
+        if channel and channel != "terminal":
+            import threading
+            threading.Thread(
+                target=_run_via_api,
+                args=(row["goal"], channel),
+                daemon=True,
+            ).start()
+        else:
+            _launch(["--run", row["goal"]], f"sched_{row['id']}")
         if stype == "once":
             conn.execute("DELETE FROM scheduled_tasks WHERE id=?", (row["id"],))
             conn.commit()

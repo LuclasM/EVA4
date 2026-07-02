@@ -85,17 +85,24 @@ def _migrate():
                     schedule_day  TEXT DEFAULT '',
                     enabled       INTEGER DEFAULT 1,
                     last_run      TEXT DEFAULT '',
+                    notify_channel TEXT DEFAULT 'terminal',
                     created_at    TEXT DEFAULT (datetime('now','localtime'))
                 );
             """)
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE scheduled_tasks ADD COLUMN notify_channel TEXT DEFAULT 'terminal'")
         except Exception:
             pass
 
 
 @contextmanager
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=10000")
     try:
         yield conn
         conn.commit()

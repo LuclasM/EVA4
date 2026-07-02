@@ -37,6 +37,9 @@ from loops.task_runner import TaskRunner
 
 app = FastAPI(title="EVA4 API", version="1.0", docs_url="/docs")
 
+from adapters.wecom import router as wecom_router
+app.include_router(wecom_router)
+
 _API_KEY = os.environ.get("EVA_API_KEY", "")
 
 # ---------------------------------------------------------------------------
@@ -104,6 +107,7 @@ class ResultResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 def _run_task(task_id: str, goal: str, session_id: str) -> None:
+    from tools.user_input import _NeedUserInput
     schemas, fns = build_tools(_store)
     runner = TaskRunner(
         llm=_llm, schemas=schemas, fns=fns,
@@ -113,6 +117,8 @@ def _run_task(task_id: str, goal: str, session_id: str) -> None:
     try:
         result = runner.run(goal)
         _set_result(task_id, "done", result)
+    except _NeedUserInput as e:
+        _set_result(task_id, "done", f"❓ {e.question}")
     except Exception as e:
         _set_result(task_id, "failed", str(e))
 
@@ -137,6 +143,36 @@ def _now() -> str:
 def health():
     """Liveness check — no auth required."""
     return {"ok": True}
+
+
+class CommandRequest(BaseModel):
+    line: str   # e.g. "/tasks" or "/memory search foo"
+
+
+@app.post("/command", dependencies=[Depends(_auth)])
+def run_command(req: CommandRequest):
+    """Run a slash command synchronously and return its text output."""
+    import io, contextlib, re
+    from eva import _handle_slash
+    schemas, fns = build_tools(_store)
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            _handle_slash(
+                req.line,
+                llm=_llm,
+                store=_store,
+                task_store=_task_store,
+                task_memory=_task_memory,
+                schemas=schemas,
+                fns=fns,
+            )
+    except SystemExit:
+        pass
+    except Exception as e:
+        return {"output": f"❌ {e}"}
+    text = re.sub(r'\x1b\[[0-9;]*m', '', buf.getvalue()).strip()
+    return {"output": text or "✅ 完成"}
 
 
 @app.get("/status", dependencies=[Depends(_auth)])

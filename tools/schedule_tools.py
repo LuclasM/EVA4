@@ -37,6 +37,11 @@ SCHEDULE_ADD_SCHEMA = {
                     "description": "For weekly: mon/tue/wed/thu/fri/sat/sun. For once: YYYY-MM-DD date string. Leave empty for daily.",
                     "default": "",
                 },
+                "notify_channel": {
+                    "type": "string",
+                    "description": "Where to send the result when the task fires. 'terminal' for CLI session, 'wecom:<user_id>' for WeCom (e.g. 'wecom:MengLu'). Default: 'terminal'.",
+                    "default": "terminal",
+                },
             },
             "required": ["name", "goal", "schedule_type", "schedule_time"],
         },
@@ -85,8 +90,9 @@ SCHEDULE_TOGGLE_SCHEMA = {
 
 
 def schedule_add(name: str, goal: str, schedule_type: str,
-                 schedule_time: str, schedule_day: str = "") -> str:
-    id_ = _store.add(name, goal, schedule_type, schedule_time, schedule_day)
+                 schedule_time: str, schedule_day: str = "",
+                 notify_channel: str = "terminal") -> str:
+    id_ = _store.add(name, goal, schedule_type, schedule_time, schedule_day, notify_channel)
     if schedule_type == "once":
         when = f"once on {schedule_day} at {schedule_time} (auto-deletes after running)"
     elif schedule_type == "weekly":
