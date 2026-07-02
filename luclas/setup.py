@@ -50,42 +50,64 @@ def _section(title: str) -> None:
 
 # ── Step 1: LLM ──────────────────────────────────────────────────────────────
 
-_LLM_PRESETS: dict[str, tuple[str, str, str]] = {
-    # key: (base_url, default_model, api_key_hint)
+_LLM_PRESETS: dict[str, tuple[str, str]] = {
+    # key: (base_url, api_key_hint)
     "openai":       ("https://api.openai.com/v1",
-                     "gpt-4o",
-                     "sk-...  (from platform.openai.com/api-keys)"),
+                     "sk-...  (platform.openai.com/api-keys)"),
     "deepseek":     ("https://api.deepseek.com/v1",
-                     "deepseek-chat",
-                     "sk-...  (from platform.deepseek.com)"),
+                     "sk-...  (platform.deepseek.com)"),
     "gemini":       ("https://generativelanguage.googleapis.com/v1beta/openai",
-                     "gemini-2.0-flash",
-                     "AIza...  (from aistudio.google.com)"),
+                     "AIza...  (aistudio.google.com)"),
     "moonshot":     ("https://api.moonshot.cn/v1",
-                     "moonshot-v1-8k",
-                     "sk-...  (from platform.moonshot.cn)"),
+                     "sk-...  (platform.moonshot.cn)"),
     "siliconflow":  ("https://api.siliconflow.cn/v1",
-                     "Qwen/Qwen2.5-7B-Instruct",
-                     "sk-...  (from cloud.siliconflow.cn)"),
+                     "sk-...  (cloud.siliconflow.cn)"),
     "zhipu":        ("https://open.bigmodel.cn/api/paas/v4",
-                     "glm-4-flash",
-                     "  (from open.bigmodel.cn)"),
-    "ollama":       ("http://localhost:11434/v1",
-                     "qwen2.5:7b",
-                     "ollama"),
-    "lmstudio":     ("http://localhost:1234/v1",
-                     "",
-                     "lm-studio"),
-    "vllm":         ("http://localhost:8000/v1",
-                     "",
-                     "token-abc123  (or 'none' if auth disabled)"),
-    "custom":       ("", "", ""),
+                     "...  (open.bigmodel.cn)"),
+    "ollama":       ("http://localhost:11434/v1",  "ollama"),
+    "lmstudio":     ("http://localhost:1234/v1",   "lm-studio"),
+    "vllm":         ("http://localhost:8000/v1",   "none"),
+    "custom":       ("", ""),
+}
+
+_LLM_KNOWN_MODELS: dict[str, list[str]] = {
+    "openai": [
+        "gpt-4o", "gpt-4o-mini",
+        "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+        "o3", "o3-mini", "o4-mini",
+    ],
+    "deepseek": [
+        "deepseek-chat",
+        "deepseek-reasoner",
+    ],
+    "gemini": [
+        "gemini-2.5-pro", "gemini-2.5-flash",
+        "gemini-2.0-flash", "gemini-2.0-flash-lite",
+        "gemini-1.5-pro", "gemini-1.5-flash",
+    ],
+    "moonshot": [
+        "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k",
+    ],
+    "siliconflow": [
+        "Qwen/Qwen2.5-7B-Instruct",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "Qwen/QwQ-32B",
+        "deepseek-ai/DeepSeek-V3",
+        "deepseek-ai/DeepSeek-R1",
+        "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        "meta-llama/Meta-Llama-3.1-70B-Instruct",
+    ],
+    "zhipu": [
+        "glm-4-flash", "glm-4-flash-250414",
+        "glm-4", "glm-4-plus", "glm-4-long",
+        "glm-z1-flash",
+    ],
 }
 
 _LLM_OPTIONS = [
-    ("openai",      "OpenAI          (GPT-4o, GPT-4o-mini …)"),
-    ("deepseek",    "DeepSeek        (deepseek-chat, deepseek-reasoner …)"),
-    ("gemini",      "Google Gemini   (gemini-2.0-flash …)"),
+    ("openai",      "OpenAI          (GPT-4o, GPT-4.1, o3 …)"),
+    ("deepseek",    "DeepSeek        (deepseek-chat, deepseek-reasoner)"),
+    ("gemini",      "Google Gemini   (gemini-2.5-flash …)"),
     ("moonshot",    "Moonshot / Kimi (moonshot-v1-8k …)"),
     ("siliconflow", "SiliconFlow     (hosted open-source models)"),
     ("zhipu",       "Zhipu / GLM     (glm-4-flash …)"),
@@ -96,24 +118,74 @@ _LLM_OPTIONS = [
 ]
 
 
+def _fetch_openai_models(base_url: str, api_key: str = "") -> list[str]:
+    """Try GET /models on an OpenAI-compatible endpoint. Returns [] on failure."""
+    import json, urllib.request
+    try:
+        req = urllib.request.Request(
+            base_url.rstrip("/") + "/models",
+            headers={"Authorization": f"Bearer {api_key}"} if api_key else {},
+        )
+        with urllib.request.urlopen(req, timeout=4) as r:
+            data = json.loads(r.read())
+            return sorted(m["id"] for m in data.get("data", []))
+    except Exception:
+        return []
+
+
+def _fetch_ollama_models() -> list[str]:
+    """Try Ollama's native /api/tags endpoint."""
+    import json, urllib.request
+    try:
+        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=4) as r:
+            data = json.loads(r.read())
+            return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        return []
+
+
+def _pick_model(provider: str, base_url: str, api_key: str = "") -> str:
+    """Show a model menu; fall back to manual entry."""
+    models: list[str] = []
+
+    if provider == "ollama":
+        print("\n  Detecting installed Ollama models…", end="", flush=True)
+        models = _fetch_ollama_models()
+        print(" done." if models else " (could not reach Ollama)")
+    elif provider in ("lmstudio", "vllm"):
+        print("\n  Detecting loaded models…", end="", flush=True)
+        models = _fetch_openai_models(base_url, api_key)
+        print(" done." if models else " (server not reachable or no models loaded)")
+    elif provider in _LLM_KNOWN_MODELS:
+        models = _LLM_KNOWN_MODELS[provider]
+
+    if not models:
+        return _ask("Model name", "")
+
+    options = [(m, m) for m in models] + [("__other__", "Other (enter manually)")]
+    choice = _choose("Select a model:", options)
+    if choice == "__other__":
+        return _ask("Model name", "")
+    return choice
+
+
 def _step_llm() -> dict[str, str]:
     _section("Step 1 · LLM Configuration")
 
     provider = _choose("Which LLM provider are you using?", _LLM_OPTIONS)
-    base_url_default, model_default, key_hint = _LLM_PRESETS[provider]
+    base_url_default, key_hint = _LLM_PRESETS[provider]
 
     if provider == "ollama":
-        print("\n  Tip: make sure `ollama serve` is running.")
-        print("  Check available models with: ollama list")
+        print("\n  Make sure `ollama serve` is running.")
     elif provider == "lmstudio":
-        print("\n  Tip: enable 'Local Server' in LM Studio settings.")
+        print("\n  Enable 'Local Server' in LM Studio settings.")
     elif provider not in ("vllm", "custom"):
-        print(f"\n  API key hint: {key_hint}")
+        print(f"\n  API key: {key_hint}")
 
     print()
     base_url = _ask("API base URL", base_url_default)
-    model    = _ask("Model name",   model_default)
-    api_key  = _ask("API key",      key_hint.split()[0] if key_hint else "none")
+    api_key  = _ask("API key", key_hint.split()[0] if key_hint else "none")
+    model    = _pick_model(provider, base_url, api_key)
 
     return {
         "LUC_LLM_BASE_URL": base_url,
