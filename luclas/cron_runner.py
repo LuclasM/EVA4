@@ -3,7 +3,7 @@
 Luclas cron runner — system-level scheduler for nightly reflection and user-defined tasks.
 
 Add to crontab (crontab -e):
-    * * * * * /usr/bin/python3 /path/to/Luclas/luc/cron_runner.py >> /path/to/Luclas/data/sessions/logs/cron.log 2>&1
+    * * * * * /usr/bin/python3 /path/to/Luclas/luclas/cron_runner.py >> /path/to/Luclas/data/sessions/logs/cron.log 2>&1
 
 This script is called every minute. It does nothing if an interactive Luclas session
 is currently running (checked via PID file).
@@ -23,7 +23,7 @@ from config import DATA_DIR, DB_PATH
 _PID_FILE    = os.path.join(DATA_DIR, "luclas.pid")
 _ACTIVE_FILE = os.path.join(DATA_DIR, "last_active")
 _LOG_DIR     = os.path.join(DATA_DIR, "sessions", "logs")
-_LUC_PY      = os.path.join(BASE_DIR, "luc.py")
+_LUCLAS_PY      = os.path.join(BASE_DIR, "luclas.py")
 _API_BASE    = os.environ.get("LUC_API_BASE", "http://localhost:8080")
 _API_KEY     = ""   # loaded lazily from .env
 
@@ -140,7 +140,7 @@ def _run_via_api(goal: str, notify_channel: str) -> None:
         _log(f"task result (terminal):\n{result}")
 
 
-def _luc_running() -> bool:
+def _luclas_running() -> bool:
     if not os.path.isfile(_PID_FILE):
         return False
     try:
@@ -168,7 +168,7 @@ def _launch(extra_args: list[str], log_suffix: str) -> None:
     log_path = os.path.join(_LOG_DIR, f"{log_suffix}_{stamp}.log")
     with open(log_path, "w") as lf:
         subprocess.Popen(
-            [sys.executable, _LUC_PY] + extra_args,
+            [sys.executable, _LUCLAS_PY] + extra_args,
             stdout=lf, stderr=lf,
             cwd=BASE_DIR, start_new_session=True,
         )
@@ -239,7 +239,7 @@ def _log(msg: str) -> None:
 
 
 def main():
-    if _luc_running():
+    if _luclas_running():
         return  # interactive session active — skip
     now = datetime.datetime.now()
     _check_reflection(now)
