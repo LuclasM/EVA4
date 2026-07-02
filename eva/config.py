@@ -47,17 +47,17 @@ REFLECT_PATH     = os.path.join(DATA_DIR, "reflect.md")
 RAW_DIR      = os.path.join(DATA_DIR, "raw")
 SESSION_DIR  = os.path.join(DATA_DIR, "sessions")
 
-LANG = os.environ.get("EVA_LANG", "en")
+LANG = os.environ.get("LUC_LANG", "en")
 
-LLM_BASE_URL = os.environ.get("EVA_LLM_BASE_URL", "http://localhost:8003/v1")
-LLM_MODEL    = os.environ.get("EVA_LLM_MODEL", "qwen3.6-27b-awq-int4")
-LLM_API_KEY  = os.environ.get("EVA_LLM_API_KEY", "none")
+LLM_BASE_URL = os.environ.get("LUC_LLM_BASE_URL", "http://localhost:8003/v1")
+LLM_MODEL    = os.environ.get("LUC_LLM_MODEL", "qwen3.6-27b-awq-int4")
+LLM_API_KEY  = os.environ.get("LUC_LLM_API_KEY", "none")
 
 AGENT_MAX_ITERATIONS = 100
 AGENT_STALL_WINDOW   = 5
 AGENT_MAX_ERRORS     = 5
 
 EMBED_MODEL = os.environ.get(
-    "EVA_EMBED_MODEL",
+    "LUC_EMBED_MODEL",
     "BAAI/bge-small-zh-v1.5" if LANG == "zh" else "paraphrase-multilingual-MiniLM-L12-v2",
 )

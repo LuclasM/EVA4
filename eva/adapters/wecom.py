@@ -33,8 +33,8 @@ AGENT_ID         = os.environ.get("WECOM_AGENT_ID", "")
 SECRET           = os.environ.get("WECOM_SECRET", "")
 TOKEN            = os.environ.get("WECOM_TOKEN", "")
 ENCODING_AES_KEY = os.environ.get("WECOM_ENCODING_AES_KEY", "")
-EVA_API_BASE     = os.environ.get("EVA_API_BASE", "http://localhost:8080")
-EVA_API_KEY      = os.environ.get("EVA_API_KEY", "")
+LUC_API_BASE     = os.environ.get("LUC_API_BASE", "http://localhost:8080")
+LUC_API_KEY      = os.environ.get("LUC_API_KEY", "")
 
 # ---------------------------------------------------------------------------
 # Access token 缓存
@@ -106,10 +106,10 @@ def _send_text(user_id: str, content: str) -> None:
 # ---------------------------------------------------------------------------
 
 def _run_command_and_reply(user_id: str, line: str) -> None:
-    headers = {"X-API-Key": EVA_API_KEY, "Content-Type": "application/json"}
+    headers = {"X-API-Key": LUC_API_KEY, "Content-Type": "application/json"}
     try:
         r = requests.post(
-            f"{EVA_API_BASE}/command",
+            f"{LUC_API_BASE}/command",
             json={"line": line},
             headers=headers,
             timeout=15,
@@ -120,10 +120,10 @@ def _run_command_and_reply(user_id: str, line: str) -> None:
 
 
 def _process_and_reply(user_id: str, message: str) -> None:
-    headers = {"X-API-Key": EVA_API_KEY, "Content-Type": "application/json"}
+    headers = {"X-API-Key": LUC_API_KEY, "Content-Type": "application/json"}
     try:
         r = requests.post(
-            f"{EVA_API_BASE}/chat",
+            f"{LUC_API_BASE}/chat",
             json={"message": message, "session_id": f"wecom_{user_id}"},
             headers=headers,
             timeout=10,
@@ -138,7 +138,7 @@ def _process_and_reply(user_id: str, message: str) -> None:
         time.sleep(2)
         try:
             res = requests.get(
-                f"{EVA_API_BASE}/result/{task_id}",
+                f"{LUC_API_BASE}/result/{task_id}",
                 headers=headers,
                 timeout=10,
             ).json()

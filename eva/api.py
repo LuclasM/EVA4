@@ -6,8 +6,8 @@ Start:
     uvicorn api:app --host 0.0.0.0 --port 8080
 
 Environment:
-    EVA_API_KEY   optional — if set, all endpoints require X-API-Key header
-    EVA_API_PORT  listen port (default 8080)
+    LUC_API_KEY   optional — if set, all endpoints require X-API-Key header
+    LUC_API_PORT  listen port (default 8080)
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ app = FastAPI(title="Luclas API", version="1.0", docs_url="/docs")
 from adapters.wecom import router as wecom_router
 app.include_router(wecom_router)
 
-_API_KEY = os.environ.get("EVA_API_KEY", "")
+_API_KEY = os.environ.get("LUC_API_KEY", "")
 
 # ---------------------------------------------------------------------------
 # Singleton resources (one set shared across all requests)
@@ -260,5 +260,5 @@ def delete_result(task_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("EVA_API_PORT", 8080))
+    port = int(os.environ.get("LUC_API_PORT", 8080))
     uvicorn.run("api:app", host="0.0.0.0", port=port, reload=False)

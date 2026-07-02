@@ -3,7 +3,7 @@ i18n.py — CLI display string localization.
 
 Only user-facing terminal text lives here (print/input strings). Prompts sent
 to the LLM are deliberately NOT localized — they stay in English regardless
-of EVA_LANG, since the model's output language is governed by core.md and
+of LUC_LANG, since the model's output language is governed by core.md and
 the conversation content, not by the scaffold prompt's language.
 
 Usage: import i18n as T; print(T.startup_banner())

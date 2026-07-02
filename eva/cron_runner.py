@@ -23,8 +23,8 @@ from config import DATA_DIR, DB_PATH
 _PID_FILE    = os.path.join(DATA_DIR, "luclas.pid")
 _ACTIVE_FILE = os.path.join(DATA_DIR, "last_active")
 _LOG_DIR     = os.path.join(DATA_DIR, "sessions", "logs")
-_EVA_PY      = os.path.join(BASE_DIR, "eva.py")
-_API_BASE    = os.environ.get("EVA_API_BASE", "http://localhost:8080")
+_LUC_PY      = os.path.join(BASE_DIR, "eva.py")
+_API_BASE    = os.environ.get("LUC_API_BASE", "http://localhost:8080")
 _API_KEY     = ""   # loaded lazily from .env
 
 _DAY_NAMES   = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -38,7 +38,7 @@ def _load_api_key() -> str:
     try:
         for line in open(env_path):
             line = line.strip()
-            if line.startswith("EVA_API_KEY="):
+            if line.startswith("LUC_API_KEY="):
                 _API_KEY = line.split("=", 1)[1].strip()
                 break
     except Exception:
@@ -168,7 +168,7 @@ def _launch(extra_args: list[str], log_suffix: str) -> None:
     log_path = os.path.join(_LOG_DIR, f"{log_suffix}_{stamp}.log")
     with open(log_path, "w") as lf:
         subprocess.Popen(
-            [sys.executable, _EVA_PY] + extra_args,
+            [sys.executable, _LUC_PY] + extra_args,
             stdout=lf, stderr=lf,
             cwd=BASE_DIR, start_new_session=True,
         )
