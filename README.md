@@ -1,96 +1,105 @@
 # EVA4 `v0.1.0`
 
-EVA4 is an experience-driven AI assistant. It runs an agent loop against any
-OpenAI-compatible chat-completions endpoint (Ollama, vLLM, llama.cpp server,
-OpenAI itself, etc.), keeps a searchable long-term memory in SQLite, and
-recursively decomposes goals into subtasks until they're atomic enough to
-execute with tools.
+EVA4 is a self-evolving AI agent. It starts empty and grows through use.
 
-The agent's own behavior — when to stop, how to break down a task, what to
-remember — is governed by `data/core.md`, a plain-text policy file the agent
-can rewrite itself (`core_update`) as it learns better strategies.
+Most AI assistants are static — same behavior on day one as day one thousand. EVA4 is different: every task it runs, every mistake it makes, every correction you give it gets written into a persistent memory and a self-managed policy file (`core.md`). The agent reads its own history before acting, and can rewrite its own operating rules mid-task when it finds a better way.
+
+The result is an assistant that gets meaningfully better at *your specific work* the more you use it — not better at everything in general, but better at the things you actually ask it to do.
+
+## How growth works
+
+EVA4 has three layers of self-improvement:
+
+1. **Experience memory** — after every task, what happened, what worked, and what failed is stored in SQLite and retrieved as context for future similar tasks. The agent learns from its own track record.
+
+2. **Self-updating policy** — `data/core.md` is the agent's operating manual. The agent can rewrite it when it identifies a better strategy. Every version is snapshotted, so you can diff the evolution over time.
+
+3. **Zero pre-loaded knowledge** — the database starts empty. Everything EVA4 knows about your domain, your workflows, your preferences, it learned from working with you. This means two EVA4 instances raised on different work will behave very differently.
+
+## The risk: drift
+
+Because EVA4 writes its own rules, it can go wrong in ways a static assistant cannot. If it develops a bad habit — overcautious, sloppy about a certain task type, optimizing for the wrong outcome — that pattern gets reinforced across future tasks until you correct it.
+
+**You are responsible for steering it.** EVA4 grows toward whatever behavior you reward with continued use and corrects away from whatever you explicitly push back on.
+
+Practical safeguards:
+- Read `data/core.md` periodically. It's a plain-text file; you can edit it directly.
+- When EVA4 does something wrong, say so explicitly — "that approach was wrong because X" is more useful than silence or a vague "try again".
+- Use `/history` to review what it's been doing and whether the patterns look right.
+- Use `core.md` snapshots (`/core history`) to see how its rules have changed.
+
+## How to get the most out of it
+
+EVA4 grows faster with real work than with test questions.
+
+- **Give it actual tasks**, not demos. A real failed attempt teaches more than a successful toy example.
+- **Correct it in context.** When it makes a mistake mid-task, use Ctrl-C to pause and inject the correction rather than waiting until the end.
+- **Don't over-specify.** EVA4 is designed to figure out *how* to do things. Tell it *what* you want and let it decide the approach — then correct the approach if it's wrong.
+- **Let it fail sometimes.** Failure with explicit feedback is the fastest path to improvement. Don't only give it easy tasks.
 
 ## Features
 
-- **Recursive task decomposition** — the LLM decides whether a goal needs to
-  be split into subtasks, with no fixed depth limit.
-- **Long-term memory** — facts, experiences, workflows, and opinions are
-  stored in SQLite with tags, importance scores, and semantic search
-  (sentence-transformers embeddings + cosine similarity, with keyword
-  fallback if embeddings are unavailable).
-- **Task history / episodic memory** — recent task records are automatically
-  injected into context; older ones are archived, and very old batches get
-  compressed into LLM-written summaries.
-- **Tool use** — shell exec, Python exec (subprocess-isolated), file
-  read/write/list, grep/find, HTTP requests, web search/fetch, and memory
-  read/write tools.
-- **Self-updating policy** — the agent can rewrite `core.md` mid-task when it
-  finds a better way of working; previous versions are snapshotted.
-- **Resumable, interruptible tasks** — Ctrl-C pauses a running task so you
-  can inject new instructions; a second Ctrl-C stops it. Interrupted task
-  state is checkpointed and recoverable.
-- **i18n** — CLI output language is controlled by `EVA_LANG` (`en` default,
-  `zh` supported); LLM-facing prompts are always English regardless of
-  `EVA_LANG`, since the model's reply language is driven by the conversation
-  content, not the scaffold prompt.
+- **Recursive task decomposition** — the LLM decides whether a goal needs subtasks, with no fixed depth limit.
+- **Long-term memory** — searchable SQLite store with tags, importance scores, and semantic search (sentence-transformers + cosine similarity, keyword fallback).
+- **Episodic memory** — recent tasks injected into context; older ones archived; very old batches compressed into LLM-written summaries.
+- **Tool use** — shell, Python (subprocess-isolated), file ops, grep/find, HTTP, web search/fetch, memory read/write, scheduled tasks.
+- **Messaging adapters** — receive tasks and push results via WeCom (企业微信); more platforms coming.
+- **HTTP API** — submit tasks asynchronously, poll for results, integrate with external systems.
+- **Scheduled tasks** — daily/weekly/one-shot tasks set via natural language; results routed back to the channel that created them.
+- **i18n** — CLI display language via `EVA_LANG` (`en` default, `zh` supported).
 
 ## Quick start
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # edit EVA_LLM_BASE_URL / EVA_LLM_MODEL etc.
-python3 eva.py
+cp .env.example .env   # set EVA_LLM_BASE_URL and EVA_LLM_MODEL
+./eva4
 ```
 
-On first run, if no `data/core.md` exists, EVA4 asks the configured LLM to
-generate its own policy file; if that fails it falls back to the bundled
-default in `data/core.md`.
+On first run EVA4 generates its own `data/core.md` by asking the LLM to write an initial policy. From that point on, it owns the file.
 
 ## Configuration
-
-All configuration is via environment variables (see `.env.example`), loaded
-from a local `.env` file if present:
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `EVA_LANG` | `en` | CLI display language (`en` / `zh`) |
 | `EVA_LLM_BASE_URL` | `http://localhost:8003/v1` | OpenAI-compatible endpoint |
-| `EVA_LLM_MODEL` | `qwen3.6-27b-awq-int4` | Model name passed to the endpoint |
-| `EVA_LLM_API_KEY` | `none` | API key, if the endpoint requires one |
-| `EVA_EMBED_MODEL` | language-dependent | sentence-transformers model for memory embeddings |
+| `EVA_LLM_MODEL` | `qwen3.6-27b-awq-int4` | Model name |
+| `EVA_LLM_API_KEY` | `none` | API key if required |
+| `EVA_API_KEY` | _(none)_ | Auth key for the HTTP API |
+| `EVA_EMBED_MODEL` | language-dependent | sentence-transformers model for memory search |
 
-### Customizing the agent's policy without forking
+### Private policy customization
 
-`data/core.md` is the generic default shipped with this repo. If a file
-named `data/core.local.md` exists, it takes precedence over `data/core.md`
-and is gitignored — use it to run your own private policy customizations
-(domain-specific instructions, business workflows, etc.) without ever
-touching the tracked default or needing to fork the public policy file.
+Create `data/core.local.md` to override `data/core.md` without touching the tracked default. This file is gitignored — use it for domain-specific instructions, business workflows, or constraints you don't want in the public repo.
 
 ## Project layout
 
 ```
-eva.py                 CLI entry point, slash commands, bootstrap
-config.py              env-driven configuration
-i18n.py                 CLI display strings (EVA_LANG-driven)
-llm_client.py           OpenAI-compatible chat client
-loops/
-  agent_loop.py         core LLM ↔ tool execution loop
-  task_runner.py        recursive decompose/execute/merge
-  _upgrade_eval.py       detects repeated failures, asks the LLM to self-diagnose
-memory/
-  database.py           SQLite schema/migrations
-  store.py               long-term memory (write/search/update/delete)
-  embedder.py             sentence-transformers wrapper
-  task_memory.py         episodic task history (active/archived/summarized tiers)
-tools/                  shell/python/file/search/http/web/memory tool implementations
-utils/display.py       terminal color helpers
+eva4                   launcher script
+eva/
+  eva.py               CLI entry point, slash commands, bootstrap
+  api.py               HTTP API (FastAPI)
+  cron_runner.py       scheduled task runner (crontab-driven)
+  config.py            env-driven configuration
+  i18n.py              CLI display strings
+  llm_client.py        OpenAI-compatible chat client
+  loops/
+    agent_loop.py      core LLM ↔ tool execution loop
+    task_runner.py     recursive decompose/execute/merge
+  memory/
+    database.py        SQLite schema and migrations
+    store.py           long-term memory
+    task_memory.py     episodic task history
+  tools/               shell/python/file/search/http/web/memory/schedule tools
+  adapters/
+    wecom.py           WeCom (企业微信) adapter
 ```
 
 ## Roadmap
 
-- [ ] **Popular LLM support** — first-class integration with OpenAI, Anthropic Claude, Google Gemini, and other hosted providers (currently works with any OpenAI-compatible endpoint)
-- [ ] **Popular messaging platforms** — Telegram, Slack, Discord, and other chat platforms (WeCom/企业微信 is the first adapter; more coming)
+- [ ] **Popular LLM support** — first-class integration with OpenAI, Anthropic Claude, Google Gemini, and other hosted providers
+- [ ] **Popular messaging platforms** — Telegram, Slack, Discord, and others
 
 ## License
 
