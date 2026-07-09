@@ -248,7 +248,7 @@ def _handle_slash(line: str, llm, store, task_store, task_memory, schemas, fns, 
         if not tid:
             print(err(T.log_usage()))
         else:
-            _show_log(tid, task_store)
+            _show_log(tid, task_store, task_memory)
 
     elif cmd == "reset":
         _do_reset(store, task_store, task_memory)
@@ -419,7 +419,7 @@ def _show_tasks(task_store: TaskStore):
 
 
 def _show_history(task_memory: TaskMemory):
-    from memory.task_memory import _fmt_record, _fmt_tree_node
+    from memory.task_memory import _fmt_record, _fmt_tree_node, _tree_had_failure
     summaries = task_memory.get_summaries()
     records   = task_memory.list_all(limit=20)
 
@@ -439,22 +439,30 @@ def _show_history(task_memory: TaskMemory):
         for r in records:
             tier_label = {"active": ok("●"), "running": warn("▶"), "archived": dim("○"), "summarized": dim("·")}.get(r["tier"], " ")
             print(f"  {tier_label} {_fmt_record(r)}")
-            # 进行中任务展开显示树
-            if r["tier"] == "running" and r.get("tree"):
+            if r.get("tree"):
                 try:
                     tree = json.loads(r["tree"]) if isinstance(r["tree"], str) else r["tree"]
-                    lines = []
-                    _fmt_tree_node(tree, lines, 2)
-                    for line in lines:
-                        print(f"      {dim(line)}")
                 except Exception:
-                    pass
+                    tree = None
+                if tree:
+                    # 进行中任务：始终展开显示树
+                    # 已完成任务：只有出现过失败节点才展开（避免刷屏）
+                    had_failure = _tree_had_failure(tree)
+                    if r["tier"] == "running" or had_failure:
+                        if had_failure and r["tier"] != "running":
+                            print(f"      {warn(T.history_had_failure())}")
+                        lines = []
+                        _fmt_tree_node(tree, lines, 2)
+                        for line in lines:
+                            print(f"      {dim(line)}")
     else:
         print(T.history_empty())
     print()
 
 
-def _show_log(tid: str, task_store: TaskStore):
+def _show_log(tid: str, task_store: TaskStore, task_memory: TaskMemory):
+    from memory.task_memory import _collect_failed_nodes
+
     task = task_store.load(tid)
     if not task:
         print(err(T.log_not_found(tid)))
@@ -467,9 +475,22 @@ def _show_log(tid: str, task_store: TaskStore):
     print()
     if task.get("log"):
         print(task["log"])
-    msg_path = os.path.join(SESSION_DIR, "messages", f"{tid}.json")
-    if os.path.isfile(msg_path):
-        print(dim(T.log_messages_path(msg_path)))
+
+    # 失败子任务的完整执行记录（工具调用/思考过程），按 exec_id 定位
+    record = task_memory.get(tid)
+    if record and record.get("tree"):
+        try:
+            tree = json.loads(record["tree"]) if isinstance(record["tree"], str) else record["tree"]
+        except Exception:
+            tree = None
+        if tree:
+            for node in _collect_failed_nodes(tree):
+                exec_id = node.get("exec_id")
+                if not exec_id:
+                    continue
+                msg_path = os.path.join(SESSION_DIR, "messages", f"{exec_id}.json")
+                if os.path.isfile(msg_path):
+                    print(dim(T.log_failed_node_messages(node.get("goal", ""), msg_path)))
     print()
 
 

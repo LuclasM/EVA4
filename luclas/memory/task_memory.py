@@ -228,6 +228,13 @@ Requirements:
 
         return "\n".join(parts)
 
+    def get(self, record_id: str) -> dict | None:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM task_records WHERE id=?", (record_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
     def list_all(self, limit: int = 20) -> list[dict]:
         with get_conn() as conn:
             rows = conn.execute("""
@@ -256,6 +263,27 @@ def _fmt_tree_node(node: dict, lines: list, depth: int) -> None:
     lines.append(f"{indent}[{icon}] {node.get('goal', '')}{result_str}")
     for st in node.get("subtasks", []):
         _fmt_tree_node(st, lines, depth + 1)
+
+
+def _tree_had_failure(node: dict) -> bool:
+    """True if this node or any descendant ever ended in status='failed'."""
+    if not node:
+        return False
+    if node.get("status") == "failed":
+        return True
+    return any(_tree_had_failure(st) for st in node.get("subtasks", []))
+
+
+def _collect_failed_nodes(node: dict, out: list | None = None) -> list[dict]:
+    """Flat list of every node (at any depth) whose status is 'failed'."""
+    out = out if out is not None else []
+    if not node:
+        return out
+    if node.get("status") == "failed":
+        out.append(node)
+    for st in node.get("subtasks", []):
+        _collect_failed_nodes(st, out)
+    return out
 
 
 def _fmt_record(r: dict) -> str:

@@ -474,6 +474,11 @@ def history_empty() -> str:
     return _pick("  (no task records yet)", "  （暂无任务记录）")
 
 
+def history_had_failure() -> str:
+    return _pick("⚠ one or more subtasks failed during execution:",
+                 "⚠ 执行过程中有子任务失败过：")
+
+
 def log_not_found(tid: str) -> str:
     return _pick(f"✗ task not found: {tid}", f"✗ 未找到任务：{tid}")
 
@@ -494,8 +499,11 @@ def log_result(v) -> str:
     return _pick(f"  Result: {v}", f"  结果：{v}")
 
 
-def log_messages_path(p: str) -> str:
-    return _pick(f"\nFull conversation log: {p}", f"\n完整对话消息：{p}")
+def log_failed_node_messages(goal: str, p: str) -> str:
+    return _pick(
+        f"\nFailed subtask \"{goal[:50]}\" — full tool-call log: {p}",
+        f"\n失败子任务「{goal[:50]}」的完整执行记录：{p}",
+    )
 
 
 # ── /reset ───────────────────────────────────────────────────────────────────

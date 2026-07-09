@@ -13,7 +13,7 @@ import uuid
 
 from loops.agent_loop import run_agent
 from loops._upgrade_eval import UpgradeEvaluator
-from memory.task_memory import TaskMemory
+from memory.task_memory import TaskMemory, _tree_had_failure
 from utils.display import info, dim, ok, err
 import i18n as T
 
@@ -74,6 +74,7 @@ class TaskRunner:
             self._persist(record_id, root, "active", T.sentinel_user_interrupted(), [], started, display_goal)
             root_task["status"] = "failed"
             root_task["result"] = T.sentinel_user_interrupted()
+            root_task["log"]    = self._tree_str_full(root)
             self.task_store.save(root_task)
             self._cleanup_mem(mem_id)
             raise
@@ -84,6 +85,7 @@ class TaskRunner:
         self._persist(record_id, root, "active", summary, artifacts, started, display_goal)
         root_task["status"] = "done"
         root_task["result"] = final[:500]
+        root_task["log"]    = self._tree_str_full(root)
         self.task_store.save(root_task)
 
         self._cleanup_mem(mem_id)
@@ -240,6 +242,9 @@ class TaskRunner:
             "log":    "",
             "result": "",
         }
+        # Link this node to its execution transcript (SESSION_DIR/messages/{exec_id}.json),
+        # so a failed node can be traced back to the full tool-call log after the fact.
+        node["exec_id"] = task["id"]
 
         try:
             result = run_agent(
@@ -432,7 +437,7 @@ class TaskRunner:
         elapsed = (
             datetime.datetime.now() - datetime.datetime.strptime(started, "%Y-%m-%d %H:%M:%S")
         ).total_seconds()
-        if self._tree_had_failure(root):
+        if _tree_had_failure(root):
             return True
         if elapsed >= _FEEDBACK_DURATION_THRESHOLD:
             return True
@@ -528,11 +533,6 @@ class TaskRunner:
             tags=["user_feedback", sentiment, goal[:20]],
             importance=8 if sentiment == "negative" else 6,
         )
-
-    def _tree_had_failure(self, node: dict) -> bool:
-        if node.get("status") == "failed":
-            return True
-        return any(self._tree_had_failure(st) for st in node.get("subtasks", []))
 
     def _count_nodes(self, node: dict) -> int:
         return 1 + sum(self._count_nodes(st) for st in node.get("subtasks", []))
