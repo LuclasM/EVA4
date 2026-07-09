@@ -18,10 +18,8 @@ from utils.display import info, dim, ok, err
 import i18n as T
 
 # Feedback loop tuning (see TaskRunner._needs_feedback / _maybe_collect_feedback)
-_FEEDBACK_DURATION_THRESHOLD = 180   # seconds — "took a long time"
-_FEEDBACK_SIZE_THRESHOLD     = 4     # tree node count — "large/multi-step task"
-_MAX_FEEDBACK_ROUNDS         = 4     # cap on back-and-forth clarifying questions
-_MAX_FEEDBACK_REDOS          = 2     # cap on recursive redo attempts triggered by feedback
+_MAX_FEEDBACK_ROUNDS = 4   # cap on back-and-forth clarifying questions
+_MAX_FEEDBACK_REDOS  = 2   # cap on recursive redo attempts triggered by feedback
 
 
 def _node(goal: str) -> dict:
@@ -431,39 +429,38 @@ class TaskRunner:
         return decision
 
     def _needs_feedback(self, goal: str, final: str, root: dict, started: str) -> bool:
-        """Objective triggers first (cheap, no LLM call); if none fire, ask the LLM
-        to judge whether the result is open-ended/subjective enough to warrant a check-in.
+        """Ask the LLM whether this task's result warrants a feedback check-in.
+        We compute the objective signals (they're cheap) but the decision itself is
+        always the LLM's call, not a hardcoded gate.
         """
         elapsed = (
             datetime.datetime.now() - datetime.datetime.strptime(started, "%Y-%m-%d %H:%M:%S")
         ).total_seconds()
-        if _tree_had_failure(root):
-            return True
-        if elapsed >= _FEEDBACK_DURATION_THRESHOLD:
-            return True
-        if self._count_nodes(root) >= _FEEDBACK_SIZE_THRESHOLD:
-            return True
+        had_failure = _tree_had_failure(root)
+        node_count  = self._count_nodes(root)
         try:
-            if not self.task_memory.get_relevant(goal, limit=1):
-                return True   # first time doing something like this
+            first_time = not self.task_memory.get_relevant(goal, limit=1)
         except Exception:
-            pass
+            first_time = False
 
         prompt = (
             f"Task: {goal}\nResult: {final[:600]}\n\n"
-            "This was a quick, routine task with no errors and nothing similar done before. "
-            "Is the result open-ended or subjective — i.e. there's no single objectively correct "
-            "answer, so the user's judgment matters (writing, recommendations, creative work, "
-            "ambiguous requests)? Routine/mechanical tasks with a clearly verifiable result "
-            "should answer false.\n"
-            'Return JSON only: {"open_ended": true/false}'
+            f"Signals: elapsed={elapsed:.0f}s, subtask_count={node_count}, "
+            f"had_failure_or_retry={had_failure}, first_time_similar_task={first_time}\n\n"
+            "Decide whether to ask the user for feedback on this result. Ask if ANY of: "
+            "this is the first time doing this kind of task, errors/retries happened mid-task, "
+            "it took a long time, it's a large/multi-step task, or the result is open-ended/"
+            "subjective — no single objectively correct answer, so the user's judgment matters "
+            "(writing, recommendations, creative work, ambiguous requests). Skip for simple, "
+            "routine, quick tasks with a clean, unambiguous, verifiable result.\n"
+            'Return JSON only: {"ask_feedback": true/false}'
         )
         try:
             resp    = self.llm.chat([{"role": "user", "content": prompt}], temperature=0.0, max_tokens=50)
             cleaned = re.sub(r'```[a-z]*\n?', '', resp).strip()
             match   = re.search(r'\{.*\}', cleaned, re.DOTALL)
             if match:
-                return bool(json.loads(match.group()).get("open_ended", False))
+                return bool(json.loads(match.group()).get("ask_feedback", False))
         except Exception:
             pass
         return False
@@ -478,14 +475,18 @@ class TaskRunner:
             "Decide what to do next:\n"
             '- User is satisfied / confirms the result is good: '
             '{"sentiment": "positive", "action": "end"}\n'
-            '- User is unsatisfied but you now have a clear enough correction or new approach to '
-            'redo the task with: {"sentiment": "negative", "action": "redo", '
+            '- User is unsatisfied, AND has given a concrete new approach to try, AND has '
+            'explicitly confirmed they want the task redone (both conditions required — do not '
+            'infer consent to redo just because a correction was mentioned): '
+            '{"sentiment": "negative", "action": "redo", '
             '"new_goal": "<original task re-stated, incorporating the corrected approach>"}\n'
-            '- User is unsatisfied and explicitly wants to stop without redoing (or doesn\'t know '
-            'the right answer and declines to redo): {"sentiment": "negative", "action": "end"}\n'
-            '- More clarification is needed before you can decide — ask ONE short concrete question, '
-            'either to find out what was wrong / what correct guidance to follow, or (if the user '
-            'doesn\'t know the right answer either) whether to redo and with what different approach: '
+            '- User is unsatisfied and either explicitly wants to stop without redoing, or '
+            'doesn\'t know the right answer and declines to redo: '
+            '{"sentiment": "negative", "action": "end"}\n'
+            '- Not yet resolved — ask ONE short concrete question. If you don\'t yet know what '
+            'was wrong or what to do instead, ask that. If you know what\'s wrong but don\'t yet '
+            'have both a concrete new approach and explicit confirmation to redo, ask directly: '
+            '"want me to redo it with X approach?": '
             '{"sentiment": "negative", "action": "continue", "question": "..."}\n\n'
             "Return JSON only, no other text."
         )
