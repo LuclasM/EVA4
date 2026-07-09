@@ -585,6 +585,17 @@ def feedback_saved() -> str:
     return _pick("Feedback saved.", "反馈已记录。")
 
 
+def feedback_followup_default() -> str:
+    return _pick(
+        "Could you say more about what was wrong, or how you'd like it done instead?",
+        "能再说说具体哪里不对，或者你希望怎么调整吗？",
+    )
+
+
+def feedback_redo_note() -> str:
+    return _pick("Redoing the task with the corrected approach…", "正在按新的思路重新执行任务…")
+
+
 def tool_error_line(e) -> str:
     return _pick(f"✗ {e}", f"✗ {e}")
 

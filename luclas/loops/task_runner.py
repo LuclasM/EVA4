@@ -17,6 +17,12 @@ from memory.task_memory import TaskMemory
 from utils.display import info, dim, ok, err
 import i18n as T
 
+# Feedback loop tuning (see TaskRunner._needs_feedback / _maybe_collect_feedback)
+_FEEDBACK_DURATION_THRESHOLD = 180   # seconds — "took a long time"
+_FEEDBACK_SIZE_THRESHOLD     = 4     # tree node count — "large/multi-step task"
+_MAX_FEEDBACK_ROUNDS         = 4     # cap on back-and-forth clarifying questions
+_MAX_FEEDBACK_REDOS          = 2     # cap on recursive redo attempts triggered by feedback
+
 
 def _node(goal: str) -> dict:
     return {
@@ -48,7 +54,7 @@ class TaskRunner:
 
     # ── 入口 ─────────────────────────────────────────────
 
-    def run(self, goal: str) -> str:
+    def run(self, goal: str, _redo_depth: int = 0) -> str:
         display_goal = _strip_adapter_prefix(goal)   # clean goal for DB / display
         self.llm.set_goal(display_goal)              # classify without adapter noise
         root         = _node(goal)                   # full goal (with adapter context) for LLM
@@ -74,7 +80,7 @@ class TaskRunner:
 
         final = root.get("result", T.sentinel_not_completed())
         summary, artifacts = self._post_process(goal, final)
-        self._collect_feedback(display_goal, summary)
+        feedback_decision = self._maybe_collect_feedback(display_goal, summary, final, root, started)
         self._persist(record_id, root, "active", summary, artifacts, started, display_goal)
         root_task["status"] = "done"
         root_task["result"] = final[:500]
@@ -90,6 +96,11 @@ class TaskRunner:
 
         # P0-4: 任务完成后评估是否需要系统升级
         self._upgrade_evaluator.evaluate_after_task(goal, final)
+
+        if (feedback_decision and feedback_decision.get("action") == "redo"
+                and feedback_decision.get("new_goal") and _redo_depth < _MAX_FEEDBACK_REDOS):
+            print(dim(T.feedback_redo_note()))
+            return self.run(feedback_decision["new_goal"], _redo_depth=_redo_depth + 1)
 
         return final
 
@@ -368,26 +379,163 @@ class TaskRunner:
             pass
         return result[:80], []
 
-    def _collect_feedback(self, goal: str, summary: str) -> str:
-        """Ask the user for feedback on the completed task; saved to memory for future learning.
-        Only runs interactively — in non-interactive channels (API/adapters) ask_user raises
-        _NeedUserInput, which we treat as "no feedback loop available here" and skip.
+    def _maybe_collect_feedback(self, goal: str, summary: str, final: str,
+                                root: dict, started: str) -> dict | None:
+        """Ask the user for feedback on the completed task, only when it's warranted
+        (first time doing this kind of task, mid-task errors/retries, long-running,
+        large/multi-step, or an open-ended/subjective result). Routine, quick, clean
+        results are skipped — not every task needs a check-in.
+
+        Only runs interactively — in non-interactive channels (API/adapters) ask_user
+        raises _NeedUserInput, which we treat as "no feedback loop available here" and skip.
+
+        On negative feedback, keeps asking short clarifying questions (capped at
+        _MAX_FEEDBACK_ROUNDS) until the user gives a clear instruction to end or to
+        redo the task with a corrected approach. Always ends by writing a consolidated
+        memory entry (transcript + distilled lesson) so the exchange feeds future learning.
+
+        Returns a decision dict {"action": "redo"|"end", ...} or None if no feedback
+        was collected at all.
         """
         from tools.user_input import ask_user, _NeedUserInput
+        if not self._needs_feedback(goal, final, root, started):
+            return None
         try:
             answer = ask_user(T.feedback_question(summary))
         except _NeedUserInput:
-            return ""
+            return None
         if not answer or answer == T.ask_user_no_answer():
-            return ""
-        self.mem_store.write(
-            content=f"Task: {goal}\nSummary: {summary}\nUser feedback: {answer}",
-            type="feedback",
-            tags=["user_feedback", goal[:20]],
-            importance=7,
-        )
+            return None
+
+        transcript = [{"q": T.feedback_question(summary), "a": answer}]
+        decision   = self._interpret_feedback(goal, summary, transcript)
+
+        rounds = 0
+        while decision.get("action") == "continue" and rounds < _MAX_FEEDBACK_ROUNDS:
+            next_q = decision.get("question") or T.feedback_followup_default()
+            try:
+                reply = ask_user(next_q)
+            except _NeedUserInput:
+                break
+            transcript.append({"q": next_q, "a": reply})
+            decision = self._interpret_feedback(goal, summary, transcript)
+            rounds  += 1
+
+        self._save_feedback_memory(goal, summary, transcript, decision)
         print(dim(T.feedback_saved()))
-        return answer
+        return decision
+
+    def _needs_feedback(self, goal: str, final: str, root: dict, started: str) -> bool:
+        """Objective triggers first (cheap, no LLM call); if none fire, ask the LLM
+        to judge whether the result is open-ended/subjective enough to warrant a check-in.
+        """
+        elapsed = (
+            datetime.datetime.now() - datetime.datetime.strptime(started, "%Y-%m-%d %H:%M:%S")
+        ).total_seconds()
+        if self._tree_had_failure(root):
+            return True
+        if elapsed >= _FEEDBACK_DURATION_THRESHOLD:
+            return True
+        if self._count_nodes(root) >= _FEEDBACK_SIZE_THRESHOLD:
+            return True
+        try:
+            if not self.task_memory.get_relevant(goal, limit=1):
+                return True   # first time doing something like this
+        except Exception:
+            pass
+
+        prompt = (
+            f"Task: {goal}\nResult: {final[:600]}\n\n"
+            "This was a quick, routine task with no errors and nothing similar done before. "
+            "Is the result open-ended or subjective — i.e. there's no single objectively correct "
+            "answer, so the user's judgment matters (writing, recommendations, creative work, "
+            "ambiguous requests)? Routine/mechanical tasks with a clearly verifiable result "
+            "should answer false.\n"
+            'Return JSON only: {"open_ended": true/false}'
+        )
+        try:
+            resp    = self.llm.chat([{"role": "user", "content": prompt}], temperature=0.0, max_tokens=50)
+            cleaned = re.sub(r'```[a-z]*\n?', '', resp).strip()
+            match   = re.search(r'\{.*\}', cleaned, re.DOTALL)
+            if match:
+                return bool(json.loads(match.group()).get("open_ended", False))
+        except Exception:
+            pass
+        return False
+
+    def _interpret_feedback(self, goal: str, summary: str, transcript: list[dict]) -> dict:
+        """One LLM call that both classifies sentiment and decides the next move,
+        mirroring the JSON-decision pattern used by _decompose/_post_process/_auto_aar.
+        """
+        convo = "\n".join(f"- Q: {t['q']}\n  A: {t['a']}" for t in transcript)
+        prompt = (
+            f"Task: {goal}\nResult summary: {summary}\n\nFeedback conversation so far:\n{convo}\n\n"
+            "Decide what to do next:\n"
+            '- User is satisfied / confirms the result is good: '
+            '{"sentiment": "positive", "action": "end"}\n'
+            '- User is unsatisfied but you now have a clear enough correction or new approach to '
+            'redo the task with: {"sentiment": "negative", "action": "redo", '
+            '"new_goal": "<original task re-stated, incorporating the corrected approach>"}\n'
+            '- User is unsatisfied and explicitly wants to stop without redoing (or doesn\'t know '
+            'the right answer and declines to redo): {"sentiment": "negative", "action": "end"}\n'
+            '- More clarification is needed before you can decide — ask ONE short concrete question, '
+            'either to find out what was wrong / what correct guidance to follow, or (if the user '
+            'doesn\'t know the right answer either) whether to redo and with what different approach: '
+            '{"sentiment": "negative", "action": "continue", "question": "..."}\n\n'
+            "Return JSON only, no other text."
+        )
+        try:
+            resp    = self.llm.chat([{"role": "user", "content": prompt}], temperature=0.1, max_tokens=400)
+            cleaned = re.sub(r'```[a-z]*\n?', '', resp).strip()
+            match   = re.search(r'\{.*\}', cleaned, re.DOTALL)
+            if match:
+                data = json.loads(match.group())
+                if data.get("action") in ("redo", "end", "continue"):
+                    return data
+        except Exception:
+            pass
+        return {"sentiment": "negative", "action": "end"}
+
+    def _save_feedback_memory(self, goal: str, summary: str,
+                              transcript: list[dict], decision: dict) -> None:
+        convo     = "\n".join(f"Q: {t['q']}\nA: {t['a']}" for t in transcript)
+        sentiment = decision.get("sentiment", "negative")
+        content   = f"Task: {goal}\nSummary: {summary}\nSentiment: {sentiment}\nConversation:\n{convo}"
+
+        prompt = (
+            f"{content}\n\n"
+            "Extract a concise, reusable lesson from this feedback exchange for future similar tasks "
+            "(what to do differently, what the user actually wants, pitfalls to avoid).\n"
+            'If there is a lesson worth recording, return: {"experience": "..."}\n'
+            'Otherwise return: {"experience": null}\n'
+            "Return JSON only."
+        )
+        experience = None
+        try:
+            resp    = self.llm.chat([{"role": "user", "content": prompt}], temperature=0.2, max_tokens=400)
+            cleaned = re.sub(r'```[a-z]*\n?', '', resp).strip()
+            match   = re.search(r'\{.*\}', cleaned, re.DOTALL)
+            if match:
+                experience = json.loads(match.group()).get("experience")
+        except Exception:
+            pass
+        if experience:
+            content += f"\nExtracted lesson: {experience}"
+
+        self.mem_store.write(
+            content=content,
+            type="feedback",
+            tags=["user_feedback", sentiment, goal[:20]],
+            importance=8 if sentiment == "negative" else 6,
+        )
+
+    def _tree_had_failure(self, node: dict) -> bool:
+        if node.get("status") == "failed":
+            return True
+        return any(self._tree_had_failure(st) for st in node.get("subtasks", []))
+
+    def _count_nodes(self, node: dict) -> int:
+        return 1 + sum(self._count_nodes(st) for st in node.get("subtasks", []))
 
     # ── 树显示 ───────────────────────────────────────────
 
