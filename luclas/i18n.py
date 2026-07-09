@@ -150,6 +150,7 @@ def help_text() -> str:
   /history                View work history (latest 20 task records)
   /log <task_id>          View task execution log
   /models                 Show configured LLM models
+  /models edit            Interactive model manager (add/edit/delete)
   /reflect                Full strategic reflection — improves core.md methodology
   /schedule               Manage scheduled tasks
   /reset                  Clear all memory and tasks (requires confirmation)
@@ -170,6 +171,7 @@ def help_text() -> str:
   /history                查看工作历史（最近 20 条任务记录）
   /log <task_id>          查看任务执行日志
   /models                 查看已配置的大模型
+  /models edit            交互式模型管理（增删改，上下箭头导航）
   /reflect                全面反思，改进 core.md 方法论
   /schedule               管理定时任务
   /reset                  清除所有记忆和任务（需确认）

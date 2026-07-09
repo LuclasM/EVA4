@@ -260,7 +260,12 @@ def _handle_slash(line: str, llm, store, task_store, task_memory, schemas, fns, 
             _reflect_cmd(runner)
 
     elif cmd == "models":
-        _show_models(llm)
+        if sub == "edit":
+            from model_manager import run as _edit_models
+            _edit_models()
+            llm.reload_router()
+        else:
+            _show_models(llm)
 
     elif cmd == "schedule":
         _schedule_cmd(sub, rest)

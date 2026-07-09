@@ -16,6 +16,19 @@ class LLMClient:
 
     # ── Routing API ──────────────────────────────────────────────────────────
 
+    def reload_router(self) -> None:
+        """Re-read models.json and rebuild the router in place."""
+        from llm_router import ModelRouter, load_models
+        from config import MODELS_CONFIG_PATH
+        models = load_models(MODELS_CONFIG_PATH)
+        if models:
+            self._router = ModelRouter(models)
+            print(f"[router] reloaded {len(models)} model(s)")
+        else:
+            self._router = None
+        self._model_queue = []
+        self._current_idx = 0
+
     def set_goal(self, goal: str) -> None:
         """Classify the goal and build the ordered model queue for this task."""
         if self._router:
