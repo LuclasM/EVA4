@@ -52,7 +52,7 @@ class TaskRunner:
 
     # ── 入口 ─────────────────────────────────────────────
 
-    def run(self, goal: str, _redo_depth: int = 0) -> str:
+    def run(self, goal: str, _redo_depth: int = 0, on_result=None) -> str:
         display_goal = _strip_adapter_prefix(goal)   # clean goal for DB / display
         self.llm.set_goal(display_goal)              # classify without adapter noise
         root         = _node(goal)                   # full goal (with adapter context) for LLM
@@ -78,6 +78,8 @@ class TaskRunner:
             raise
 
         final = root.get("result", T.sentinel_not_completed())
+        if on_result:
+            on_result(final)   # show the result to the user before asking for feedback
         summary, artifacts = self._post_process(goal, final)
         feedback_decision = self._maybe_collect_feedback(display_goal, summary, final, root, started)
         self._persist(record_id, root, "active", summary, artifacts, started, display_goal)
@@ -100,7 +102,7 @@ class TaskRunner:
         if (feedback_decision and feedback_decision.get("action") == "redo"
                 and feedback_decision.get("new_goal") and _redo_depth < _MAX_FEEDBACK_REDOS):
             print(dim(T.feedback_redo_note()))
-            return self.run(feedback_decision["new_goal"], _redo_depth=_redo_depth + 1)
+            return self.run(feedback_decision["new_goal"], _redo_depth=_redo_depth + 1, on_result=on_result)
 
         return final
 

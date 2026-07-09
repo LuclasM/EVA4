@@ -94,8 +94,7 @@ def _run_headless(goal: str) -> None:
 
     print(f"\n[headless {datetime.datetime.now():%Y-%m-%d %H:%M:%S}] {goal[:80]}")
     try:
-        result = runner.run(goal)
-        print(f"\n[done] {result[:300]}")
+        runner.run(goal, on_result=lambda r: print(f"\n[done] {r[:300]}"))
     except Exception as e:
         print(f"\n[error] {e}")
     finally:
@@ -197,8 +196,8 @@ def main():
 def _run_task(goal: str, runner: TaskRunner):
     print(f"\n{head(T.task_started())}")
     try:
-        result = runner.run(goal)
-        print(f"\n{head(T.task_done())}\n{result}\n")
+        # Show the result before any feedback prompt runner.run() may trigger internally.
+        runner.run(goal, on_result=lambda r: print(f"\n{head(T.task_done())}\n{r}\n"))
     except KeyboardInterrupt:
         print(T.task_interrupted())
     except Exception as e:
