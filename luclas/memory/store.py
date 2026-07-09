@@ -6,7 +6,7 @@ from memory.database import get_conn
 class MemoryStore:
 
     def write(self, content: str, type: str = "", tags: list = None,
-              importance: int = 5) -> str:
+              importance: int = 5, source: str = "", credibility: str = "") -> str:
         mid = uuid.uuid4().hex[:12]
         tags_json = json.dumps(tags or [], ensure_ascii=False)
         try:
@@ -16,13 +16,15 @@ class MemoryStore:
             emb = None
         with get_conn() as conn:
             conn.execute(
-                "INSERT INTO memories (id,content,type,tags,importance,embedding) VALUES (?,?,?,?,?,?)",
-                (mid, content, type, tags_json, importance, emb)
+                "INSERT INTO memories (id,content,type,tags,importance,source,credibility,embedding) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (mid, content, type, tags_json, importance, source, credibility, emb)
             )
         return mid
 
     def search(self, query: str = "", type: str = "", tags: list = None,
-               min_importance: int = 0, limit: int = 20) -> list:
+               min_importance: int = 0, source: str = "", credibility: str = "",
+               limit: int = 20) -> list:
         conds, params = [], []
         if type:
             conds.append("type=?")
@@ -34,6 +36,12 @@ class MemoryStore:
         if min_importance > 0:
             conds.append("importance >= ?")
             params.append(min_importance)
+        if source:
+            conds.append("source=?")
+            params.append(source)
+        if credibility:
+            conds.append("credibility=?")
+            params.append(credibility)
         where = f"WHERE {' AND '.join(conds)}" if conds else ""
 
         with get_conn() as conn:
@@ -83,7 +91,8 @@ class MemoryStore:
             return self._row(row) if row else None
 
     def update(self, mid: str, content: str = None, type: str = None,
-               tags: list = None, importance: int = None) -> bool:
+               tags: list = None, importance: int = None,
+               source: str = None, credibility: str = None) -> bool:
         fields, params = [], []
         if content   is not None:
             fields.append("content=?")
@@ -97,6 +106,8 @@ class MemoryStore:
         if type      is not None: fields.append("type=?");       params.append(type)
         if tags      is not None: fields.append("tags=?");       params.append(json.dumps(tags, ensure_ascii=False))
         if importance is not None: fields.append("importance=?"); params.append(importance)
+        if source    is not None: fields.append("source=?");      params.append(source)
+        if credibility is not None: fields.append("credibility=?"); params.append(credibility)
         if not fields:
             return False
         fields.append("updated_at=datetime('now','localtime')")
@@ -148,37 +159,3 @@ class MemoryStore:
         except Exception:
             d["tags"] = []
         return d
-
-
-class TaskStore:
-
-    def save(self, task: dict) -> None:
-        with get_conn() as conn:
-            conn.execute("""
-                INSERT INTO tasks (id,goal,status,log,result)
-                VALUES (:id,:goal,:status,:log,:result)
-                ON CONFLICT(id) DO UPDATE SET
-                    status=excluded.status,
-                    log=excluded.log,
-                    result=excluded.result,
-                    updated_at=datetime('now','localtime')
-            """, task)
-
-    def load(self, tid: str) -> dict | None:
-        with get_conn() as conn:
-            row = conn.execute("SELECT * FROM tasks WHERE id=?", (tid,)).fetchone()
-            return dict(row) if row else None
-
-    def list_recent(self, limit: int = 20) -> list:
-        with get_conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM tasks ORDER BY updated_at DESC LIMIT ?", (limit,)
-            ).fetchall()
-            return [dict(r) for r in rows]
-
-    def list_active(self) -> list:
-        with get_conn() as conn:
-            rows = conn.execute(
-                "SELECT * FROM tasks WHERE status='active' ORDER BY created_at DESC"
-            ).fetchall()
-            return [dict(r) for r in rows]

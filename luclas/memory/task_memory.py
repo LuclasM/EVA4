@@ -25,21 +25,26 @@ class TaskMemory:
 
     def save(self, record: dict) -> None:
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        tree = record.get("tree", {})
+        status = record.get("status") or tree.get("status") or "running"
+        if status not in ("done", "failed"):
+            status = "running"
         with get_conn() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO task_records
                   (id, session_id, goal, summary, artifacts, tree, importance, tier,
-                   created_at, completed_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
+                   status, created_at, completed_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 record.get("id") or uuid.uuid4().hex[:12],
                 record.get("session_id", ""),
                 record.get("goal", ""),
                 record.get("summary", ""),
                 json.dumps(record.get("artifacts", []), ensure_ascii=False),
-                json.dumps(record.get("tree", {}), ensure_ascii=False),
+                json.dumps(tree, ensure_ascii=False),
                 record.get("importance", 7),
                 record.get("tier", "active"),
+                status,
                 record.get("created_at", now),
                 record.get("completed_at", now),
             ))
@@ -238,7 +243,7 @@ Requirements:
     def list_all(self, limit: int = 20) -> list[dict]:
         with get_conn() as conn:
             rows = conn.execute("""
-                SELECT id, session_id, goal, summary, artifacts, tree, tier, completed_at
+                SELECT id, session_id, goal, summary, artifacts, tree, tier, status, completed_at
                 FROM task_records ORDER BY completed_at DESC LIMIT ?
             """, (limit,)).fetchall()
         return [dict(r) for r in rows]

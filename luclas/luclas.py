@@ -23,7 +23,7 @@ def _make_llm() -> LLMClient:
         print(f"[router] loaded {len(models)} model(s)")
     return LLMClient(router=router)
 from memory.database import init_db
-from memory.store import MemoryStore, TaskStore
+from memory.store import MemoryStore
 from memory.task_memory import TaskMemory
 from tools.registry import build_tools
 from tools.core_tools import load_core, core_update
@@ -83,12 +83,11 @@ def _run_headless(goal: str) -> None:
     session_id  = uuid.uuid4().hex[:8]
     llm         = _make_llm()
     store       = MemoryStore()
-    task_store  = TaskStore()
     task_memory = TaskMemory()
     schemas, fns = build_tools(store)
     runner = TaskRunner(
         llm=llm, schemas=schemas, fns=fns,
-        task_store=task_store, task_memory=task_memory,
+        task_memory=task_memory,
         mem_store=store, session_id=session_id,
     )
 
@@ -117,13 +116,12 @@ def main():
     session_id  = uuid.uuid4().hex[:8]
     llm         = _make_llm()
     store       = MemoryStore()
-    task_store  = TaskStore()
     task_memory = TaskMemory()
     schemas, fns = build_tools(store)
 
     runner = TaskRunner(
         llm=llm, schemas=schemas, fns=fns,
-        task_store=task_store, task_memory=task_memory,
+        task_memory=task_memory,
         mem_store=store, session_id=session_id,
     )
 
@@ -153,7 +151,7 @@ def main():
     n_running = tm_counts.get("running", 0)
     running_label = f"  {warn(T.running_count(n_running))}" if n_running else ""
     print(T.status_line(avail, store.count(), tm_counts['active'], tm_counts['archived'], running_label))
-    active = task_store.list_active()
+    active = task_memory.get_running()
     if active:
         print(warn(T.unfinished_tasks(len(active))))
     print(T.session_id_line(dim(session_id)))
@@ -179,7 +177,7 @@ def main():
 
         if line.startswith("/"):
             try:
-                _handle_slash(line, llm, store, task_store, task_memory, schemas, fns, runner)
+                _handle_slash(line, llm, store, task_memory, schemas, fns, runner)
             except SystemExit:
                 readline.write_history_file(_history_file)
                 _stop_print_logger()
@@ -207,7 +205,7 @@ def _run_task(goal: str, runner: TaskRunner):
 
 # ── 斜杠命令 ──────────────────────────────────────────────
 
-def _handle_slash(line: str, llm, store, task_store, task_memory, schemas, fns, runner=None):
+def _handle_slash(line: str, llm, store, task_memory, schemas, fns, runner=None):
     parts = line[1:].split(None, 2)
     cmd  = parts[0].lower() if parts else ""
     sub  = parts[1].lower() if len(parts) > 1 else ""
@@ -222,7 +220,7 @@ def _handle_slash(line: str, llm, store, task_store, task_memory, schemas, fns, 
         print(T.help_text())
 
     elif cmd == "status":
-        _show_status(store, task_store, task_memory)
+        _show_status(store, task_memory)
 
     elif cmd == "whoami":
         _show_whoami(llm, store)
@@ -237,7 +235,7 @@ def _handle_slash(line: str, llm, store, task_store, task_memory, schemas, fns, 
             _memory_cmd("", store)
 
     elif cmd == "tasks":
-        _show_tasks(task_store)
+        _show_tasks(task_memory)
 
     elif cmd == "history":
         _show_history(task_memory)
@@ -247,10 +245,10 @@ def _handle_slash(line: str, llm, store, task_store, task_memory, schemas, fns, 
         if not tid:
             print(err(T.log_usage()))
         else:
-            _show_log(tid, task_store, task_memory)
+            _show_log(tid, task_memory)
 
     elif cmd == "reset":
-        _do_reset(store, task_store, task_memory)
+        _do_reset(store, task_memory)
 
     elif cmd == "reflect":
         if runner is None:
@@ -275,14 +273,13 @@ def _handle_slash(line: str, llm, store, task_store, task_memory, schemas, fns, 
 
 # ── 命令实现 ──────────────────────────────────────────────
 
-def _show_status(store: MemoryStore, task_store: TaskStore, task_memory: TaskMemory):
+def _show_status(store: MemoryStore, task_memory: TaskMemory):
     print(f"\n{head(T.status_title())}")
     print(T.status_memory(store.count()))
-    active = task_store.list_active()
-    print(T.status_active_tasks(len(active)))
+    tm = task_memory.count()
+    print(T.status_active_tasks(tm.get('running', 0)))
     snap_count = len(os.listdir(CORE_HIST)) if os.path.isdir(CORE_HIST) else 0
     print(T.status_policy_versions(snap_count))
-    tm = task_memory.count()
     print(T.status_history(tm['active'], tm.get('running', 0), tm['archived'], tm['summarized'], tm['summaries']))
     print()
 
@@ -401,9 +398,9 @@ def _memory_cmd(sub: str, store: MemoryStore):
         print()
 
 
-def _show_tasks(task_store: TaskStore):
-    active = task_store.list_active()
-    recent = task_store.list_recent(limit=15)
+def _show_tasks(task_memory: TaskMemory):
+    active = task_memory.get_running()
+    recent = task_memory.list_all(limit=15)
     print(head(T.tasks_title()))
     if active:
         print(T.tasks_unfinished(len(active)))
@@ -412,7 +409,7 @@ def _show_tasks(task_store: TaskStore):
         print()
     print(T.tasks_recent())
     for t in recent:
-        icon = {"done": ok("✓"), "failed": err("✗"), "active": warn("…")}.get(t["status"], "?")
+        icon = {"done": ok("✓"), "failed": err("✗"), "running": warn("…")}.get(t.get("status", ""), "?")
         print(f"  {icon} [{t['id']}] {t['goal'][:60]}")
     print()
 
@@ -459,41 +456,45 @@ def _show_history(task_memory: TaskMemory):
     print()
 
 
-def _show_log(tid: str, task_store: TaskStore, task_memory: TaskMemory):
-    from memory.task_memory import _collect_failed_nodes
+def _show_log(tid: str, task_memory: TaskMemory):
+    from memory.task_memory import _fmt_tree_node, _collect_failed_nodes
 
-    task = task_store.load(tid)
-    if not task:
+    record = task_memory.get(tid)
+    if not record:
         print(err(T.log_not_found(tid)))
         return
-    print(head(T.log_title(tid)))
-    print(T.log_goal(task['goal']))
-    print(T.log_status(task['status']))
-    if task.get("result"):
-        print(T.log_result(task['result'][:200]))
-    print()
-    if task.get("log"):
-        print(task["log"])
 
-    # 失败子任务的完整执行记录（工具调用/思考过程），按 exec_id 定位
-    record = task_memory.get(tid)
-    if record and record.get("tree"):
+    tree = None
+    if record.get("tree"):
         try:
             tree = json.loads(record["tree"]) if isinstance(record["tree"], str) else record["tree"]
         except Exception:
             tree = None
-        if tree:
-            for node in _collect_failed_nodes(tree):
-                exec_id = node.get("exec_id")
-                if not exec_id:
-                    continue
-                msg_path = os.path.join(SESSION_DIR, "messages", f"{exec_id}.json")
-                if os.path.isfile(msg_path):
-                    print(dim(T.log_failed_node_messages(node.get("goal", ""), msg_path)))
+
+    print(head(T.log_title(tid)))
+    print(T.log_goal(record['goal']))
+    print(T.log_status(record.get('status', '?')))
+    if tree and tree.get("result"):
+        print(T.log_result(tree['result'][:200]))
+    print()
+
+    if tree:
+        lines = []
+        _fmt_tree_node(tree, lines, 0)
+        print("\n".join(lines))
+
+        # 失败子任务的完整执行记录（工具调用/思考过程），按 exec_id 定位
+        for node in _collect_failed_nodes(tree):
+            exec_id = node.get("exec_id")
+            if not exec_id:
+                continue
+            msg_path = os.path.join(SESSION_DIR, "messages", f"{exec_id}.json")
+            if os.path.isfile(msg_path):
+                print(dim(T.log_failed_node_messages(node.get("goal", ""), msg_path)))
     print()
 
 
-def _do_reset(store: MemoryStore, task_store: TaskStore, task_memory: TaskMemory):
+def _do_reset(store: MemoryStore, task_memory: TaskMemory):
     confirm = input(T.reset_confirm()).strip().lower()
     if confirm != "yes":
         print(T.reset_cancelled())
@@ -501,7 +502,6 @@ def _do_reset(store: MemoryStore, task_store: TaskStore, task_memory: TaskMemory
     import sqlite3
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("DELETE FROM memories")
-        conn.execute("DELETE FROM tasks")
         conn.execute("DELETE FROM task_records")
         conn.execute("DELETE FROM task_summaries")
     conn = sqlite3.connect(DB_PATH)
@@ -679,14 +679,9 @@ def _cleanup_interrupted_state() -> None:
     from memory.store import MemoryStore
     with get_conn() as conn:
         n = conn.execute(
-            "UPDATE task_records SET tier='active', summary=? WHERE tier='running'",
+            "UPDATE task_records SET tier='active', status='failed', summary=? WHERE tier='running'",
             (T.sentinel_abnormal_interrupt(),)
         ).rowcount
-        # tasks 表里 status='active' 的记录是上次被中断没来得及清理的，标记为 failed
-        conn.execute(
-            "UPDATE tasks SET status='failed', result=? WHERE status='active'",
-            (T.sentinel_abnormal_interrupt(),)
-        )
     if n:
         print(warn(T.cleaned_interrupted_records(n)))
     mem = MemoryStore()

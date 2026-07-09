@@ -140,6 +140,8 @@ class UpgradeEvaluator:
                         type="experience",
                         tags=["upgrade-assessment", "system-improvement"],
                         importance=8,
+                        source="first_hand",   # derived from this agent's own task history
+                        credibility="high",
                     )
                     print(f"\n  🧠 Upgrade recommendation saved to memory")
                 else:

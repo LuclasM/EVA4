@@ -35,13 +35,12 @@ def _node(goal: str) -> dict:
 
 class TaskRunner:
 
-    def __init__(self, llm, schemas, fns, task_store,
+    def __init__(self, llm, schemas, fns,
                  task_memory: TaskMemory, mem_store, session_id: str,
                  progress_callback=None, supplement_queue=None):
         self.llm               = llm
         self.schemas           = schemas
         self.fns               = fns
-        self.task_store        = task_store
         self.task_memory       = task_memory
         self.mem_store         = mem_store
         self.session_id        = session_id
@@ -61,8 +60,6 @@ class TaskRunner:
         mem_id      = [None]   # list 让递归内层可以修改
 
         self._persist(record_id, root, "running", "", [], started, display_goal)
-        root_task = {"id": record_id, "goal": display_goal, "status": "active", "log": "", "result": ""}
-        self.task_store.save(root_task)
 
         try:
             history_ctx = self.task_memory.build_context(goal)
@@ -70,10 +67,6 @@ class TaskRunner:
         except KeyboardInterrupt:
             self._mark_interrupted(root)
             self._persist(record_id, root, "active", T.sentinel_user_interrupted(), [], started, display_goal)
-            root_task["status"] = "failed"
-            root_task["result"] = T.sentinel_user_interrupted()
-            root_task["log"]    = self._tree_str_full(root)
-            self.task_store.save(root_task)
             self._cleanup_mem(mem_id)
             raise
 
@@ -83,10 +76,6 @@ class TaskRunner:
         summary, artifacts = self._post_process(goal, final)
         feedback_decision = self._maybe_collect_feedback(display_goal, summary, final, root, started)
         self._persist(record_id, root, "active", summary, artifacts, started, display_goal)
-        root_task["status"] = "done"
-        root_task["result"] = final[:500]
-        root_task["log"]    = self._tree_str_full(root)
-        self.task_store.save(root_task)
 
         self._cleanup_mem(mem_id)
 
@@ -305,6 +294,8 @@ class TaskRunner:
                         type=data.get("type", "experience"),
                         tags=data.get("tags", [goal[:20]]),
                         importance=min(10, max(1, data.get("importance", 5))),
+                        source="first_hand",       # own direct execution, not external material
+                        credibility="high",
                     )
                     print(f"{'  ' * (len(ancestors) + 1)}{ok('\U0001f9e0')} {T.aar_saved(mid)}")
         except Exception:
@@ -535,6 +526,8 @@ class TaskRunner:
             type="feedback",
             tags=["user_feedback", sentiment, goal[:20]],
             importance=8 if sentiment == "negative" else 6,
+            source="user_instruction",   # directly stated by the user
+            credibility="high",
         )
 
     def _count_nodes(self, node: dict) -> int:

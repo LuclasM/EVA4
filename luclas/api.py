@@ -28,7 +28,7 @@ from config import CORE_HIST, DATA_DIR, LLM_BASE_URL, LLM_MODEL, MODELS_CONFIG_P
 from llm_client import LLMClient
 from llm_router import ModelRouter, load_models
 from memory.database import init_db
-from memory.store import MemoryStore, TaskStore
+from memory.store import MemoryStore
 from memory.task_memory import TaskMemory
 from tools.registry import build_tools
 from loops.task_runner import TaskRunner
@@ -52,7 +52,6 @@ _API_KEY = os.environ.get("LUC_API_KEY", "")
 
 _llm:         LLMClient   | None = None
 _store:       MemoryStore | None = None
-_task_store:  TaskStore   | None = None
 _task_memory: TaskMemory  | None = None
 
 # In-memory result store  {task_id: {...}}
@@ -68,7 +67,7 @@ _session_tasks: dict[str, str] = {}
 
 @app.on_event("startup")
 def _startup() -> None:
-    global _llm, _store, _task_store, _task_memory
+    global _llm, _store, _task_memory
     for d in [RAW_DIR, SESSION_DIR,
               os.path.join(SESSION_DIR, "logs"),
               os.path.join(SESSION_DIR, "messages"),
@@ -82,7 +81,6 @@ def _startup() -> None:
         print(f"[router] loaded {len(_loaded)} model(s) from models.json")
     _llm         = LLMClient(router=_router)
     _store       = MemoryStore()
-    _task_store  = TaskStore()
     _task_memory = TaskMemory()
     from adapters.discord_adapter import start_bot as _start_discord
     _start_discord()
@@ -172,7 +170,7 @@ def _run_task(task_id: str, goal: str, session_id: str,
 
     runner = TaskRunner(
         llm=task_llm, schemas=schemas, fns=fns,
-        task_store=_task_store, task_memory=_task_memory,
+        task_memory=_task_memory,
         mem_store=_store, session_id=session_id,
         progress_callback=progress_callback,
         supplement_queue=supplement_queue,
@@ -253,7 +251,6 @@ def run_command(req: CommandRequest):
                 req.line,
                 llm=_llm,
                 store=_store,
-                task_store=_task_store,
                 task_memory=_task_memory,
                 schemas=schemas,
                 fns=fns,
