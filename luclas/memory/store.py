@@ -6,7 +6,7 @@ from memory.database import get_conn
 class MemoryStore:
 
     def write(self, content: str, type: str = "", tags: list = None,
-              importance: int = 5, source: str = "", credibility: str = "") -> str:
+              importance: int = 5, source: str = "", credibility: int = 0) -> str:
         mid = uuid.uuid4().hex[:12]
         tags_json = json.dumps(tags or [], ensure_ascii=False)
         try:
@@ -23,7 +23,7 @@ class MemoryStore:
         return mid
 
     def search(self, query: str = "", type: str = "", tags: list = None,
-               min_importance: int = 0, source: str = "", credibility: str = "",
+               min_importance: int = 0, source: str = "", min_credibility: int = 0,
                limit: int = 20) -> list:
         conds, params = [], []
         if type:
@@ -39,9 +39,9 @@ class MemoryStore:
         if source:
             conds.append("source=?")
             params.append(source)
-        if credibility:
-            conds.append("credibility=?")
-            params.append(credibility)
+        if min_credibility > 0:
+            conds.append("credibility >= ?")
+            params.append(min_credibility)
         where = f"WHERE {' AND '.join(conds)}" if conds else ""
 
         with get_conn() as conn:
@@ -92,7 +92,7 @@ class MemoryStore:
 
     def update(self, mid: str, content: str = None, type: str = None,
                tags: list = None, importance: int = None,
-               source: str = None, credibility: str = None) -> bool:
+               source: str = None, credibility: int = None) -> bool:
         fields, params = [], []
         if content   is not None:
             fields.append("content=?")

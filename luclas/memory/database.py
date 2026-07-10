@@ -15,7 +15,7 @@ def init_db():
                 tags        TEXT DEFAULT '[]',
                 importance  INTEGER DEFAULT 5,
                 source      TEXT DEFAULT '',
-                credibility TEXT DEFAULT '',
+                credibility INTEGER DEFAULT 0,
                 access_count INTEGER DEFAULT 0,
                 embedding   BLOB,
                 created_at  TEXT DEFAULT (datetime('now','localtime')),
@@ -72,7 +72,27 @@ def _migrate():
         except Exception:
             pass
         try:
-            conn.execute("ALTER TABLE memories ADD COLUMN credibility TEXT DEFAULT ''")
+            conn.execute("ALTER TABLE memories ADD COLUMN credibility INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            # credibility switched from a high/medium/low TEXT column to a 1-10
+            # INTEGER scale (matching importance). Convert any DB still on the old
+            # TEXT column: capture existing values, rebuild the column, write back
+            # the converted numbers. No-op on fresh DBs (already INTEGER above).
+            col_types = {r[1]: r[2] for r in conn.execute("PRAGMA table_info(memories)")}
+            if col_types.get("credibility", "").upper() != "INTEGER":
+                rows = conn.execute("SELECT id, credibility FROM memories").fetchall()
+                _cred_map = {"high": 9, "medium": 6, "low": 3}
+                converted = {
+                    r["id"]: _cred_map.get((r["credibility"] or "").strip().lower(), 0)
+                    for r in rows
+                }
+                conn.execute("ALTER TABLE memories DROP COLUMN credibility")
+                conn.execute("ALTER TABLE memories ADD COLUMN credibility INTEGER DEFAULT 0")
+                for mid, val in converted.items():
+                    if val:
+                        conn.execute("UPDATE memories SET credibility=? WHERE id=?", (val, mid))
         except Exception:
             pass
         try:

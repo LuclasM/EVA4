@@ -10,11 +10,11 @@ _SOURCE_DESC = (
     "web (general web search result). Leave empty if unclear."
 )
 _CREDIBILITY_DESC = (
-    "How trustworthy this is: high, medium, or low. Guidance — "
-    "first_hand and user_instruction: high. learning_material (textbooks/official docs): high. "
-    "web: judge by the site's authority (e.g. a government agency's own site: high; "
-    "a random blog: medium/low). others_experience: judge by how detailed/plausible it is. "
-    "General/unverified material: medium. Leave empty if unclear."
+    "How trustworthy this is, on a 1-10 scale (same scale as importance; 0/omitted = unset). "
+    "Guidance — first_hand and user_instruction: 9-10. learning_material (textbooks/official "
+    "docs): 8-9. web: judge by the site's authority (e.g. a government agency's own site: 8-9; "
+    "a random blog: 3-5). others_experience: judge by how detailed/plausible it is (3-7). "
+    "General/unverified material: 5-6. Leave unset (0) if unclear."
 )
 
 MEMORY_WRITE_SCHEMA = {
@@ -30,7 +30,7 @@ MEMORY_WRITE_SCHEMA = {
                 "tags":        {"type": "array",   "items": {"type": "string"}, "description": "List of tags"},
                 "importance":  {"type": "integer", "description": "Importance level 1-10, default 5"},
                 "source":      {"type": "string",  "description": _SOURCE_DESC},
-                "credibility": {"type": "string",  "description": _CREDIBILITY_DESC},
+                "credibility": {"type": "integer", "description": _CREDIBILITY_DESC},
             },
             "required": ["content"],
         },
@@ -48,10 +48,10 @@ MEMORY_SEARCH_SCHEMA = {
                 "query":          {"type": "string",  "description": "Search keyword"},
                 "type":           {"type": "string",  "description": "Filter by type"},
                 "tags":           {"type": "array",   "items": {"type": "string"}, "description": "Filter by tags"},
-                "min_importance": {"type": "integer", "description": "Minimum importance filter"},
-                "source":         {"type": "string",  "description": "Filter by source"},
-                "credibility":    {"type": "string",  "description": "Filter by credibility: high/medium/low"},
-                "limit":          {"type": "integer", "description": "Max number of results, default 20"},
+                "min_importance":   {"type": "integer", "description": "Minimum importance filter"},
+                "source":           {"type": "string",  "description": "Filter by source"},
+                "min_credibility":  {"type": "integer", "description": "Minimum credibility filter (1-10 scale)"},
+                "limit":            {"type": "integer", "description": "Max number of results, default 20"},
             },
         },
     },
@@ -71,7 +71,7 @@ MEMORY_UPDATE_SCHEMA = {
                 "tags":        {"type": "array",   "items": {"type": "string"}},
                 "importance":  {"type": "integer"},
                 "source":      {"type": "string",  "description": _SOURCE_DESC},
-                "credibility": {"type": "string",  "description": _CREDIBILITY_DESC},
+                "credibility": {"type": "integer", "description": _CREDIBILITY_DESC},
             },
             "required": ["id"],
         },
@@ -99,22 +99,22 @@ def make_memory_tools(store: MemoryStore):
                MEMORY_UPDATE_SCHEMA, MEMORY_DELETE_SCHEMA]
 
     def memory_write(content: str, type: str = "", tags: list = None,
-                     importance: int = 5, source: str = "", credibility: str = "") -> dict:
+                     importance: int = 5, source: str = "", credibility: int = 0) -> dict:
         mid = store.write(content, type=type, tags=tags, importance=importance,
                           source=source, credibility=credibility)
         return {"ok": True, "id": mid}
 
     def memory_search(query: str = "", type: str = "", tags: list = None,
-                      min_importance: int = 0, source: str = "", credibility: str = "",
+                      min_importance: int = 0, source: str = "", min_credibility: int = 0,
                       limit: int = 20) -> dict:
         results = store.search(query=query, type=type, tags=tags,
                                min_importance=min_importance, source=source,
-                               credibility=credibility, limit=limit)
+                               min_credibility=min_credibility, limit=limit)
         return {"count": len(results), "results": results}
 
     def memory_update(id: str, content: str = None, type: str = None,
                       tags: list = None, importance: int = None,
-                      source: str = None, credibility: str = None) -> dict:
+                      source: str = None, credibility: int = None) -> dict:
         ok = store.update(id, content=content, type=type,
                           tags=tags, importance=importance,
                           source=source, credibility=credibility)

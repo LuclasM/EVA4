@@ -295,7 +295,7 @@ class TaskRunner:
                         tags=data.get("tags", [goal[:20]]),
                         importance=min(10, max(1, data.get("importance", 5))),
                         source="first_hand",       # own direct execution, not external material
-                        credibility="high",
+                        credibility=9,
                     )
                     print(f"{'  ' * (len(ancestors) + 1)}{ok('\U0001f9e0')} {T.aar_saved(mid)}")
         except Exception:
@@ -527,7 +527,7 @@ class TaskRunner:
             tags=["user_feedback", sentiment, goal[:20]],
             importance=8 if sentiment == "negative" else 6,
             source="user_instruction",   # directly stated by the user
-            credibility="high",
+            credibility=9,
         )
 
     def _count_nodes(self, node: dict) -> int:
