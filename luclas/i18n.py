@@ -696,3 +696,35 @@ def relevant_history_label() -> str:
 
 def artifacts_label() -> str:
     return _pick(" | artifacts: ", " | 产出: ")
+
+
+# ── adapters/dispatch.py: unified messaging-channel replies ─────────────────
+# Shared across wecom/whatsapp/discord so every channel respects LUC_LANG
+# instead of each adapter hardcoding its own language.
+
+def channel_processing() -> str:
+    return _pick("⏳ Processing…", "⏳ 收到，处理中…")
+
+
+def channel_done() -> str:
+    return _pick("✅ Done", "✅ 完成")
+
+
+def channel_command_failed(e) -> str:
+    return _pick(f"❌ Command failed: {e}", f"❌ 命令执行失败：{e}")
+
+
+def channel_submit_failed(e) -> str:
+    return _pick(f"❌ Failed to submit: {e}", f"❌ 提交任务失败：{e}")
+
+
+def channel_task_failed(e) -> str:
+    return _pick(f"❌ Task failed: {e}", f"❌ 任务失败：{e}")
+
+
+def channel_context_prefix(channel_label: str, sender_id: str, notify_channel: str) -> str:
+    return _pick(
+        f"[{channel_label} user {sender_id}, set notify_channel={notify_channel} "
+        f"for scheduled tasks] ",
+        f"[来自{channel_label}用户 {sender_id}，如需创建定时任务请设 notify_channel={notify_channel}] ",
+    )

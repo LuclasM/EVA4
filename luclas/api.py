@@ -32,6 +32,7 @@ from memory.store import MemoryStore
 from memory.task_memory import TaskMemory
 from tools.registry import build_tools
 from loops.task_runner import TaskRunner
+import i18n as T
 
 # ---------------------------------------------------------------------------
 # App
@@ -158,7 +159,7 @@ def _make_push_callback(session_id: str):
 
 def _run_task(task_id: str, goal: str, session_id: str,
               supplement_queue: "queue.Queue | None" = None) -> None:
-    from tools.user_input import _NeedUserInput
+    from tools.user_input import _NeedUserInput, set_channel_context, clear_channel_context
     schemas, fns = build_tools(_store)
 
     push = _make_push_callback(session_id)
@@ -175,11 +176,15 @@ def _run_task(task_id: str, goal: str, session_id: str,
         progress_callback=progress_callback,
         supplement_queue=supplement_queue,
     )
+    # Lets ask_user() (mid-task tool call or the post-task feedback loop) push
+    # questions to this channel and block for the reply on the same queue used
+    # for mid-task supplements — this thread is dedicated to this one task.
+    set_channel_context(push=push, wait_queue=supplement_queue)
     try:
         result = runner.run(goal)
         _set_result(task_id, "done", result)
         if push:
-            push(result or "✅ 完成")
+            push(result or T.channel_done())
     except _NeedUserInput as e:
         msg = f"❓ {e.question}"
         _set_result(task_id, "done", msg)
@@ -189,8 +194,9 @@ def _run_task(task_id: str, goal: str, session_id: str,
         msg = str(e)
         _set_result(task_id, "failed", msg)
         if push:
-            push(f"❌ 任务失败：{msg[:500]}")
+            push(T.channel_task_failed(msg[:500]))
     finally:
+        clear_channel_context()
         with _lock:
             if _session_tasks.get(session_id) == task_id:
                 _session_tasks.pop(session_id, None)
@@ -262,7 +268,7 @@ def run_command(req: CommandRequest):
     # Strip ANSI colour codes
     import re
     text = re.sub(r'\x1b\[[0-9;]*m', '', buf.getvalue()).strip()
-    return {"output": text or "✅ 完成"}
+    return {"output": text or T.channel_done()}
 
 
 @app.get("/status", dependencies=[Depends(_auth)])

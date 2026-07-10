@@ -1,8 +1,21 @@
 """
 tools/user_input.py — 任务执行中向用户提问，等待回答后继续
+
+三种运行模式（ask_user 按下面顺序判断）：
+  1. 已设置 channel context（消息平台后台线程，见 api.py:_run_task）：
+     把问题推送给用户，阻塞等待同一 session 的下一条消息作为回答
+     （复用 supplement_queue），超时视为未作答。
+  2. 交互式终端（tty）：直接阻塞 input()。
+  3. 真正无渠道的无头模式（如 --run/--reflect 且未设置 channel context）：
+     抛 _NeedUserInput，由调用方决定怎么处理。
 """
 
+import queue
+import sys
+import threading
+
 import i18n as T
+from config import ASK_USER_TIMEOUT_SECONDS
 from utils.display import bold, warn
 
 ASK_USER_SCHEMA = {
@@ -28,11 +41,42 @@ ASK_USER_SCHEMA = {
     },
 }
 
+# Per-thread: (push_fn, wait_queue) for the messaging channel driving the
+# currently-executing task, if any. Each background task runs in its own
+# thread (api.py:_run_task), so thread-local storage cleanly isolates
+# concurrent sessions without threading extra params through execute_tool.
+_channel_ctx = threading.local()
+
+
+def set_channel_context(push, wait_queue) -> None:
+    """Call at the start of a channel-driven task thread so ask_user() can
+    push questions to the user and block for their reply on wait_queue."""
+    _channel_ctx.push = push
+    _channel_ctx.wait_queue = wait_queue
+
+
+def clear_channel_context() -> None:
+    _channel_ctx.push = None
+    _channel_ctx.wait_queue = None
+
 
 def ask_user(question: str) -> str:
-    import sys
+    push = getattr(_channel_ctx, "push", None)
+    wait_queue = getattr(_channel_ctx, "wait_queue", None)
+
+    if push and wait_queue is not None:
+        try:
+            push(f"❓ {question}")
+        except Exception:
+            pass
+        try:
+            answer = wait_queue.get(timeout=ASK_USER_TIMEOUT_SECONDS)
+        except queue.Empty:
+            return T.ask_user_no_answer()
+        return answer.strip() if answer and answer.strip() else T.ask_user_no_answer()
+
     if not sys.stdin.isatty():
-        # 非终端（API/WeCom）：把问题抛回给调用方
+        # 无渠道、无终端（如纯无头脚本）：把问题抛回给调用方
         raise _NeedUserInput(question)
 
     print(f"\n{warn('─' * 50)}")

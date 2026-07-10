@@ -17,11 +17,12 @@ import struct
 import threading
 import time
 import xml.etree.ElementTree as ET
-from typing import Optional
 
 import requests
 from Crypto.Cipher import AES
 from fastapi import APIRouter, Query, Request, Response
+
+from adapters import dispatch
 
 router = APIRouter()
 
@@ -33,8 +34,6 @@ AGENT_ID         = os.environ.get("WECOM_AGENT_ID", "")
 SECRET           = os.environ.get("WECOM_SECRET", "")
 TOKEN            = os.environ.get("WECOM_TOKEN", "")
 ENCODING_AES_KEY = os.environ.get("WECOM_ENCODING_AES_KEY", "")
-LUC_API_BASE     = os.environ.get("LUC_API_BASE", "http://localhost:8080")
-LUC_API_KEY      = os.environ.get("LUC_API_KEY", "")
 
 # ---------------------------------------------------------------------------
 # Access token 缓存
@@ -106,39 +105,6 @@ def _send_text(user_id: str, content: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 后台任务：提交 → 轮询 → 回复
-# ---------------------------------------------------------------------------
-
-def _run_command_and_reply(user_id: str, line: str) -> None:
-    headers = {"X-API-Key": LUC_API_KEY, "Content-Type": "application/json"}
-    try:
-        r = requests.post(
-            f"{LUC_API_BASE}/command",
-            json={"line": line},
-            headers=headers,
-            timeout=15,
-        ).json()
-        _send_text(user_id, r.get("output", "✅ 完成"))
-    except Exception as e:
-        _send_text(user_id, f"❌ 命令执行失败：{e}")
-
-
-def _process_and_reply(user_id: str, message: str) -> None:
-    # Submit task and return — the task thread pushes the final result directly
-    # via progress_callback/completion path in api.py, so no polling needed here.
-    headers = {"X-API-Key": LUC_API_KEY, "Content-Type": "application/json"}
-    try:
-        requests.post(
-            f"{LUC_API_BASE}/chat",
-            json={"message": message, "session_id": f"wecom_{user_id}"},
-            headers=headers,
-            timeout=10,
-        )
-    except Exception as e:
-        _send_text(user_id, f"❌ 提交任务失败：{e}")
-
-
-# ---------------------------------------------------------------------------
 # 路由
 # ---------------------------------------------------------------------------
 
@@ -182,22 +148,14 @@ async def wecom_receive(
 
     if msg_type == "text":
         content = msg_xml.findtext("Content", "").strip()
-        if content.startswith("/"):
-            threading.Thread(
-                target=_run_command_and_reply,
-                args=(user_id, content),
-                daemon=True,
-            ).start()
-        else:
-            # 立即回复"处理中"，避免企微超时重试
-            _send_text(user_id, "⏳ 收到，处理中…")
-            # 注入用户上下文，让 LLM 设置正确的 notify_channel
-            contexted = f"[来自企业微信用户 {user_id}，如需创建定时任务请设 notify_channel=wecom:{user_id}] {content}"
-            threading.Thread(
-                target=_process_and_reply,
-                args=(user_id, contexted),
-                daemon=True,
-            ).start()
+        dispatch.handle_incoming(
+            channel_label="WeCom",
+            notify_channel=f"wecom:{user_id}",
+            session_id=f"wecom_{user_id}",
+            sender_id=user_id,
+            content=content,
+            send=lambda msg: _send_text(user_id, msg),
+        )
 
     # 企微要求返回空字符串表示已收到
     return Response("", media_type="text/plain")

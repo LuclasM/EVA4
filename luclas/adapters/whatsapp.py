@@ -3,29 +3,33 @@ adapters/whatsapp.py — Meta WhatsApp Business Cloud API adapter
 
 Flow:
   Meta → GET /whatsapp/callback  (webhook verification)
-  Meta → POST /whatsapp/callback (incoming messages)
+  Meta → POST /whatsapp/callback (incoming messages, signature-verified)
        → respond 200 immediately
-       → process in background thread
-       → poll Luclas API for result
+       → process in background thread (adapters/dispatch.py)
        → send result back via Graph API
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import os
-import threading
 
 import requests
 from fastapi import APIRouter, Query, Request, Response
+
+from adapters import dispatch
 
 router = APIRouter()
 
 PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
 ACCESS_TOKEN    = os.environ.get("WHATSAPP_ACCESS_TOKEN", "")
 VERIFY_TOKEN    = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
-LUC_API_BASE    = os.environ.get("LUC_API_BASE", "http://localhost:8080")
-LUC_API_KEY     = os.environ.get("LUC_API_KEY", "")
+APP_SECRET      = os.environ.get("WHATSAPP_APP_SECRET", "")
 
 _GRAPH_URL = "https://graph.facebook.com/v19.0/{phone_number_id}/messages"
+
+_warned_no_secret = False
 
 
 def send_text(phone: str, content: str) -> None:
@@ -45,36 +49,27 @@ def send_text(phone: str, content: str) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Background task: submit → poll → reply
-# ---------------------------------------------------------------------------
-
-def _run_command_and_reply(phone: str, line: str) -> None:
-    headers = {"X-API-Key": LUC_API_KEY, "Content-Type": "application/json"}
-    try:
-        r = requests.post(
-            f"{LUC_API_BASE}/command",
-            json={"line": line},
-            headers=headers,
-            timeout=15,
-        ).json()
-        send_text(phone, r.get("output", "✅ Done"))
-    except Exception as e:
-        send_text(phone, f"❌ Command failed: {e}")
-
-
-def _process_and_reply(phone: str, message: str) -> None:
-    # Submit task and return — the task thread pushes the final result directly.
-    headers = {"X-API-Key": LUC_API_KEY, "Content-Type": "application/json"}
-    try:
-        requests.post(
-            f"{LUC_API_BASE}/chat",
-            json={"message": message, "session_id": f"whatsapp_{phone}"},
-            headers=headers,
-            timeout=10,
-        )
-    except Exception as e:
-        send_text(phone, f"❌ Failed to submit: {e}")
+def _verify_signature(raw_body: bytes, signature_header: str) -> bool:
+    """Verify Meta's X-Hub-Signature-256 (HMAC-SHA256 over the raw body, keyed
+    by the app secret). Without WHATSAPP_APP_SECRET configured, anyone who
+    discovers the callback URL could inject fake messages — so this warns
+    loudly once and stays permissive rather than breaking existing setups
+    that haven't added the new env var yet."""
+    global _warned_no_secret
+    if not APP_SECRET:
+        if not _warned_no_secret:
+            print(
+                "[whatsapp] WARNING: WHATSAPP_APP_SECRET not set — webhook signature "
+                "verification is disabled. Anyone who finds your callback URL can "
+                "inject fake messages. Set WHATSAPP_APP_SECRET (App Dashboard → "
+                "Settings → Basic) to enable it."
+            )
+            _warned_no_secret = True
+        return True
+    if not signature_header.startswith("sha256="):
+        return False
+    expected = hmac.new(APP_SECRET.encode(), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature_header[len("sha256="):])
 
 
 # ---------------------------------------------------------------------------
@@ -96,8 +91,12 @@ async def whatsapp_verify(
 @router.post("/whatsapp/callback")
 async def whatsapp_receive(request: Request):
     """Receive incoming WhatsApp messages."""
+    raw_body = await request.body()
+    if not _verify_signature(raw_body, request.headers.get("X-Hub-Signature-256", "")):
+        return Response("signature error", status_code=403)
+
     try:
-        data = await request.json()
+        data = json.loads(raw_body)
     except Exception:
         return Response("ok")
 
@@ -111,23 +110,14 @@ async def whatsapp_receive(request: Request):
         if not content:
             return Response("ok")
 
-        if content.startswith("/"):
-            threading.Thread(
-                target=_run_command_and_reply,
-                args=(phone, content),
-                daemon=True,
-            ).start()
-        else:
-            send_text(phone, "⏳ Processing…")
-            contexted = (
-                f"[WhatsApp user {phone}, "
-                f"set notify_channel=whatsapp:{phone} for scheduled tasks] {content}"
-            )
-            threading.Thread(
-                target=_process_and_reply,
-                args=(phone, contexted),
-                daemon=True,
-            ).start()
+        dispatch.handle_incoming(
+            channel_label="WhatsApp",
+            notify_channel=f"whatsapp:{phone}",
+            session_id=f"whatsapp_{phone}",
+            sender_id=phone,
+            content=content,
+            send=lambda msg: send_text(phone, msg),
+        )
     except (KeyError, IndexError):
         pass
 

@@ -57,6 +57,10 @@ AGENT_MAX_ITERATIONS = 100
 AGENT_STALL_WINDOW   = 5
 AGENT_MAX_ERRORS     = 5
 
+# How long ask_user() waits for a reply on messaging channels (push question,
+# block on the session's supplement queue) before giving up.
+ASK_USER_TIMEOUT_SECONDS = 600
+
 MODELS_CONFIG_PATH = os.path.join(DATA_DIR, "models.json")
 
 EMBED_MODEL = os.environ.get(

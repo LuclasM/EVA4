@@ -243,15 +243,19 @@ def _setup_whatsapp() -> dict[str, str]:
     print("                           System User token from Business Settings")
     print("    5. Webhook Verify Token — any string you choose; enter it here")
     print("       and use the same value when registering the webhook in Meta.")
+    print("    6. App Secret         → App Dashboard → Settings → Basic")
+    print("                           (used to verify incoming webhook signatures)")
     print()
 
     phone_id     = _ask("WHATSAPP_PHONE_NUMBER_ID")
     access_token = _ask("WHATSAPP_ACCESS_TOKEN")
     verify_token = _ask("WHATSAPP_VERIFY_TOKEN  (choose any secret string)")
+    app_secret   = _ask("WHATSAPP_APP_SECRET")
     return {
         "WHATSAPP_PHONE_NUMBER_ID": phone_id,
         "WHATSAPP_ACCESS_TOKEN":    access_token,
         "WHATSAPP_VERIFY_TOKEN":    verify_token,
+        "WHATSAPP_APP_SECRET":      app_secret,
     }
 
 

@@ -3,11 +3,16 @@ adapters/discord_adapter.py — Discord bot adapter
 
 Flow:
   Discord → bot receives message via WebSocket
-          → process in background thread
-          → poll Luclas API for result
+          → process in background thread (adapters/dispatch.py)
           → reply in the same channel
 
-The bot runs in a daemon thread started at API startup.
+The bot runs in a daemon thread started at API startup, with a reconnect
+loop (backoff, capped) around the whole client lifecycle — discord.py's own
+`reconnect=True` only covers transient gateway drops *within* a session; it
+doesn't cover the initial connection failing outright or the client loop
+exiting unexpectedly, and an uncaught exception in a bare daemon thread would
+otherwise die silently with nothing but a stderr traceback.
+
 Requires: pip install discord.py
 """
 from __future__ import annotations
@@ -15,19 +20,24 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
+import time
+from typing import Callable
 
 import requests
 
+from adapters import dispatch
+
 BOT_TOKEN  = os.environ.get("DISCORD_BOT_TOKEN", "")
 CHANNEL_ID = int(os.environ.get("DISCORD_CHANNEL_ID", "0") or "0")
-LUC_API_BASE = os.environ.get("LUC_API_BASE", "http://localhost:8080")
-LUC_API_KEY  = os.environ.get("LUC_API_KEY", "")
 
 _DISCORD_API = "https://discord.com/api/v10"
 
 # Shared state set when the bot is ready
 _bot_loop: asyncio.AbstractEventLoop | None = None
 _bot_channel = None
+
+_RECONNECT_BASE_DELAY = 5      # seconds
+_RECONNECT_MAX_DELAY  = 300    # seconds
 
 
 # ---------------------------------------------------------------------------
@@ -74,44 +84,55 @@ def send_dm(user_id: str, content: str) -> None:
         pass
 
 
-# ---------------------------------------------------------------------------
-# Background task: submit → poll → reply
-# ---------------------------------------------------------------------------
-
-def _run_command_and_reply(user_id: str, line: str, reply_fn) -> None:
-    headers = {"X-API-Key": LUC_API_KEY, "Content-Type": "application/json"}
-    try:
-        r = requests.post(
-            f"{LUC_API_BASE}/command",
-            json={"line": line},
-            headers=headers,
-            timeout=15,
-        ).json()
-        output = r.get("output", "✅ Done")
-    except Exception as e:
-        output = f"❌ Command failed: {e}"
-    if _bot_loop:
-        asyncio.run_coroutine_threadsafe(reply_fn(output), _bot_loop)
-
-
-def _process_and_reply(user_id: str, message: str, reply_fn) -> None:
-    # Submit task and return — the task thread pushes the final result via send_text().
-    headers = {"X-API-Key": LUC_API_KEY, "Content-Type": "application/json"}
-    try:
-        requests.post(
-            f"{LUC_API_BASE}/chat",
-            json={"message": message, "session_id": f"discord_{user_id}"},
-            headers=headers,
-            timeout=10,
-        )
-    except Exception as e:
-        if _bot_loop:
-            asyncio.run_coroutine_threadsafe(reply_fn(f"❌ Submit failed: {e}"), _bot_loop)
+def _make_channel_send(channel) -> Callable[[str], None]:
+    """Sync send closure for dispatch.handle_incoming — safe to call from any
+    thread (the event loop's own thread, or dispatch's background threads)."""
+    def _send(text: str) -> None:
+        if not _bot_loop:
+            return
+        for i in range(0, max(len(text), 1), 1900):   # Discord's 2000-char limit
+            chunk = text[i:i + 1900]
+            asyncio.run_coroutine_threadsafe(channel.send(chunk), _bot_loop)
+    return _send
 
 
 # ---------------------------------------------------------------------------
 # Bot startup
 # ---------------------------------------------------------------------------
+
+def _build_client(discord):
+    intents = discord.Intents.default()
+    intents.message_content = True
+    client = discord.Client(intents=intents)
+
+    @client.event
+    async def on_ready():
+        global _bot_channel
+        _bot_channel = client.get_channel(CHANNEL_ID)
+        print(f"[discord] bot ready — channel: {_bot_channel}")
+
+    @client.event
+    async def on_message(message):
+        if message.author == client.user:
+            return
+        if message.channel.id != CHANNEL_ID:
+            return
+
+        content  = message.content.strip()
+        user_id  = str(message.author.id)
+        username = message.author.display_name
+
+        dispatch.handle_incoming(
+            channel_label="Discord",
+            notify_channel=f"discord:{user_id}",
+            session_id=f"discord_{user_id}",
+            sender_id=f"{username} (id={user_id})",
+            content=content,
+            send=_make_channel_send(message.channel),
+        )
+
+    return client
+
 
 def start_bot() -> None:
     """Start the Discord bot in a background daemon thread. Called at API startup."""
@@ -126,55 +147,31 @@ def start_bot() -> None:
 
     global _bot_loop, _bot_channel
 
-    intents = discord.Intents.default()
-    intents.message_content = True
-    client = discord.Client(intents=intents)
-
-    @client.event
-    async def on_ready():
-        global _bot_channel
-        _bot_channel = client.get_channel(CHANNEL_ID)
-        print(f"[discord] bot ready — channel: {_bot_channel}")
-
-    @client.event
-    async def on_message(message: discord.Message):
-        if message.author == client.user:
-            return
-        if message.channel.id != CHANNEL_ID:
-            return
-
-        content = message.content.strip()
-        user_id = str(message.author.id)
-        username = message.author.display_name
-
-        async def reply(text: str):
-            # Discord has a 2000-char limit per message
-            for i in range(0, len(text), 1900):
-                await message.channel.send(text[i:i + 1900])
-
-        if content.startswith("/"):
-            threading.Thread(
-                target=_run_command_and_reply,
-                args=(user_id, content, reply),
-                daemon=True,
-            ).start()
-        else:
-            await message.channel.send("⏳ Processing…")
-            contexted = (
-                f"[Discord user {username} (id={user_id}), "
-                f"set notify_channel=discord:{user_id} for scheduled tasks] {content}"
-            )
-            threading.Thread(
-                target=_process_and_reply,
-                args=(user_id, contexted, reply),
-                daemon=True,
-            ).start()
-
     def _run() -> None:
-        global _bot_loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        _bot_loop = loop
-        loop.run_until_complete(client.start(BOT_TOKEN))
+        global _bot_loop, _bot_channel
+        delay = _RECONNECT_BASE_DELAY
+        while True:
+            client = _build_client(discord)
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            _bot_loop = loop
+            try:
+                loop.run_until_complete(client.start(BOT_TOKEN))
+                print("[discord] bot connection closed normally, not restarting")
+                break
+            except discord.LoginFailure:
+                print("[discord] ERROR: invalid DISCORD_BOT_TOKEN — bot will not retry")
+                break
+            except Exception as e:
+                print(f"[discord] connection error: {e} — retrying in {delay}s")
+                time.sleep(delay)
+                delay = min(delay * 2, _RECONNECT_MAX_DELAY)
+                continue
+            finally:
+                _bot_channel = None
+                try:
+                    loop.close()
+                except Exception:
+                    pass
 
     threading.Thread(target=_run, daemon=True, name="discord-bot").start()
