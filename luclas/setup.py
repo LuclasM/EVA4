@@ -8,6 +8,8 @@ and usage preferences. Writes results to .env and data/user_direction.md.
 import os
 import sys
 
+from local_llm_detect import fetch_openai_models, fetch_ollama_models, scan_local_llm_servers
+
 
 # ── I/O helpers ──────────────────────────────────────────────────────────────
 
@@ -118,50 +120,17 @@ _LLM_OPTIONS = [
 ]
 
 
-def _fetch_openai_models(base_url: str, api_key: str = "") -> list[str]:
-    """Try /v1/models then /models on an OpenAI-compatible endpoint. Returns [] on failure."""
-    import json, urllib.request
-    hdrs = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    base = base_url.rstrip("/")
-    candidates = []
-    if not base.endswith("/v1"):
-        candidates.append(base + "/v1/models")
-    candidates.append(base + "/models")
-    for url in candidates:
-        try:
-            req = urllib.request.Request(url, headers=hdrs)
-            with urllib.request.urlopen(req, timeout=4) as r:
-                data = json.loads(r.read())
-                models = data.get("data", [])
-                if models:
-                    return sorted(m["id"] for m in models)
-        except Exception:
-            continue
-    return []
-
-
-def _fetch_ollama_models() -> list[str]:
-    """Try Ollama's native /api/tags endpoint."""
-    import json, urllib.request
-    try:
-        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=4) as r:
-            data = json.loads(r.read())
-            return [m["name"] for m in data.get("models", [])]
-    except Exception:
-        return []
-
-
 def _pick_model(provider: str, base_url: str, api_key: str = "") -> str:
     """Show a model menu; fall back to manual entry."""
     models: list[str] = []
 
     if provider == "ollama":
         print("\n  Detecting installed Ollama models…", end="", flush=True)
-        models = _fetch_ollama_models()
+        models = fetch_ollama_models()
         print(" done." if models else " (could not reach Ollama)")
     elif provider in ("lmstudio", "vllm"):
         print("\n  Detecting loaded models…", end="", flush=True)
-        models = _fetch_openai_models(base_url, api_key)
+        models, _ = fetch_openai_models(base_url, api_key)
         print(" done." if models else " (server not reachable or no models loaded)")
     elif provider in _LLM_KNOWN_MODELS:
         models = _LLM_KNOWN_MODELS[provider]
@@ -176,10 +145,45 @@ def _pick_model(provider: str, base_url: str, api_key: str = "") -> str:
     return choice
 
 
+_DETECTED_PROVIDER_LABELS = {
+    "ollama":   "Ollama",
+    "lmstudio": "LM Studio",
+    "local":    "Local server",
+}
+
+
 def _step_llm() -> dict[str, str]:
     _section("Step 1 · LLM Configuration")
 
-    provider = _choose("Which LLM provider are you using?", _LLM_OPTIONS)
+    print("\n  Scanning for locally running LLM servers…", end="", flush=True)
+    detected = scan_local_llm_servers()
+    print(f" found {len(detected)}." if detected else " none found.")
+
+    detected_options: list[tuple[str, str]] = []
+    detected_by_key: dict[str, dict] = {}
+    for i, d in enumerate(detected):
+        key = f"__detected_{i}__"
+        label = (
+            f"✓ Detected: {_DETECTED_PROVIDER_LABELS.get(d['provider'], 'Local server')} "
+            f"at {d['base_url']}  ({len(d['models'])} model(s))"
+        )
+        detected_options.append((key, label))
+        detected_by_key[key] = d
+
+    provider = _choose("Which LLM provider are you using?", detected_options + _LLM_OPTIONS)
+
+    if provider in detected_by_key:
+        d = detected_by_key[provider]
+        options = [(m, m) for m in d["models"]] + [("__other__", "Other (enter manually)")]
+        model = _choose("Select a model:", options)
+        if model == "__other__":
+            model = _ask("Model name", "")
+        return {
+            "LUC_LLM_BASE_URL": d["base_url"],
+            "LUC_LLM_MODEL":    model,
+            "LUC_LLM_API_KEY":  "none",
+        }
+
     base_url_default, key_hint = _LLM_PRESETS[provider]
 
     if provider == "ollama":

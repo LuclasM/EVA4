@@ -19,6 +19,7 @@ import tty
 from typing import Optional
 
 from config import MODELS_CONFIG_PATH
+from local_llm_detect import fetch_openai_models
 
 
 # ── ANSI helpers (used outside curses in form / picker) ──────
@@ -84,37 +85,7 @@ def _save(models: list[dict]) -> None:
 
 
 # ── Endpoint discovery ────────────────────────────────────────
-
-def _fetch_remote_models(base_url: str, api_key: str = "") -> tuple[list[str], str]:
-    """Try /v1/models then /models on the given base URL.
-
-    Returns (model_ids, effective_base_url) where effective_base_url is the
-    URL prefix that actually worked (always ends before '/models').
-    This lets callers save the normalized base_url (e.g. with /v1 suffix).
-    """
-    import urllib.request as _ur
-    hdrs: dict[str, str] = {}
-    if api_key and api_key.lower() not in ("none", ""):
-        hdrs["Authorization"] = f"Bearer {api_key}"
-
-    base = base_url.rstrip("/")
-    candidates = []
-    if not base.endswith("/v1"):
-        candidates.append(base + "/v1/models")
-    candidates.append(base + "/models")
-
-    for url in candidates:
-        try:
-            req = _ur.Request(url, headers=hdrs)
-            with _ur.urlopen(req, timeout=5) as r:
-                data = json.loads(r.read())
-                models = data.get("data", [])
-                if models:
-                    effective = url[: -len("/models")]   # strip trailing /models
-                    return sorted(m["id"] for m in models), effective
-        except Exception:
-            continue
-    return [], base_url
+# (probe logic lives in local_llm_detect.py, shared with setup.py)
 
 
 # ── Curses list screen ────────────────────────────────────────
@@ -290,7 +261,7 @@ def _form_screen(data: dict, is_new: bool, idx: int) -> bool:
     # ── Auto-connect ──────────────────────────────────────────
     sys.stdout.write(f"\n  Connecting to {_c(base_url)} ...\n")
     sys.stdout.flush()
-    remote, effective_url = _fetch_remote_models(base_url, api_key)
+    remote, effective_url = fetch_openai_models(base_url, api_key)
 
     model_name = data.get("name", "")
     if remote:
