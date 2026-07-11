@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff
+
+      - name: Syntax check (py_compile)
+        run: python -m compileall -q luclas
+
+      - name: Import check (catches missing dependencies)
+        run: |
+          python - <<'EOF'
+          import importlib
+          import pathlib
+          import sys
+
+          sys.path.insert(0, "luclas")
+          root = pathlib.Path("luclas")
+          failed = []
+          for path in sorted(root.rglob("*.py")):
+              rel = path.relative_to(root).with_suffix("")
+              module = ".".join(rel.parts)
+              try:
+                  importlib.import_module(module)
+              except Exception as exc:
+                  failed.append(f"{module}: {exc!r}")
+
+          if failed:
+              print("Import failures:")
+              for line in failed:
+                  print(f"  {line}")
+              sys.exit(1)
+          print(f"Imported {len(list(root.rglob('*.py')))} modules OK")
+          EOF
+
+      - name: Lint (errors only, no style nitpicks)
+        run: ruff check --select E9,F63,F7,F82 luclas

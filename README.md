@@ -1,5 +1,7 @@
 # Luclas `v0.2.0`
 
+[![CI](https://github.com/LuclasM/Luclas/actions/workflows/ci.yml/badge.svg)](https://github.com/LuclasM/Luclas/actions/workflows/ci.yml)
+
 See [CHANGELOG.md](CHANGELOG.md) for what's changed since the last release.
 
 Luclas is a self-evolving AI agent. It starts empty and grows through use.
@@ -110,6 +112,10 @@ luclas/
     whatsapp.py        WhatsApp Business Cloud API adapter
     discord_adapter.py Discord bot adapter
 ```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) — setup, what CI checks, and PR expectations.
 
 ## Roadmap
 
