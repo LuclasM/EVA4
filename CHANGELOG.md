@@ -3,10 +3,7 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
-
-Everything below has landed on `master` since the `v0.1.0` tag but hasn't been
-cut as a numbered release yet.
+## [0.2.0] - 2026-07-11
 
 ### Added
 - **Multi-model routing** — configure several models in `data/models.json`;

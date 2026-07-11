@@ -1,6 +1,6 @@
-# Luclas `v0.1.0`
+# Luclas `v0.2.0`
 
-See [CHANGELOG.md](CHANGELOG.md) for what's changed since this tag.
+See [CHANGELOG.md](CHANGELOG.md) for what's changed since the last release.
 
 Luclas is a self-evolving AI agent. It starts empty and grows through use.
 
