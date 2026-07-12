@@ -156,10 +156,12 @@ class TaskRunner:
 
         tree_ctx     = self._tree_str(root)
         ancestor_str = " › ".join(ancestors[-3:]) if ancestors else ""
+        history_block  = f"Work history:\n{history_ctx[:600]}\n\n---\n\n" if history_ctx else ""
+        task_path_block = f"Task path: {ancestor_str} › {goal}\n\n" if ancestor_str else ""
         prompt = (
-            f"{('Work history:\n' + history_ctx[:600] + '\n\n---\n\n') if history_ctx else ''}"
+            f"{history_block}"
             f"Current task tree:\n{tree_ctx}\n\n---\n\n"
-            f"{'Task path: ' + ancestor_str + ' › ' + goal + chr(10) + chr(10) if ancestor_str else ''}"
+            f"{task_path_block}"
             f"Pending task: {goal}\n\n"
             "Does this task need to be decomposed into multiple independent subtasks?\n"
             "- Can be done via tool calls or direct reasoning → {\"atomic\": true}\n"
@@ -297,7 +299,8 @@ class TaskRunner:
                         source="first_hand",       # own direct execution, not external material
                         credibility=9,
                     )
-                    print(f"{'  ' * (len(ancestors) + 1)}{ok('\U0001f9e0')} {T.aar_saved(mid)}")
+                    brain_icon = ok("\U0001f9e0")
+                    print(f"{'  ' * (len(ancestors) + 1)}{brain_icon} {T.aar_saved(mid)}")
         except Exception:
             pass  # AAR 失败不应影响主任务
 
