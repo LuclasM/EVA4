@@ -29,10 +29,11 @@ def run_agent(goal: str, task: dict, llm: LLMClient,
     parent_goal: 父任务目标（子任务时传入）
     """
     core = load_core()
-    system_prompt = _build_system(core, task_context, parent_goal)
+    system_prompt = _build_system(core)
+    user_message  = _build_user_message(goal, task_context, parent_goal)
     messages = [
         {"role": "system",  "content": system_prompt},
-        {"role": "user",    "content": goal},
+        {"role": "user",    "content": user_message},
     ]
 
     call_history:   list[tuple] = []
@@ -186,19 +187,34 @@ def run_agent(goal: str, task: dict, llm: LLMClient,
 
 # ── 内部工具 ───────────────────────────────────────────────
 
-def _build_system(core: str, task_context: str = "", parent_goal: str = "") -> str:
+def _build_system(core: str) -> str:
     parts = ["You are Luclas, an experience-driven assistant."]
     if core.strip():
         parts.append(f"\n\n=== Core Policy ===\n{core}")
+    return "\n".join(parts)
+
+
+def _build_user_message(goal: str, task_context: str = "", parent_goal: str = "") -> str:
+    """Task tree, prior-step status/results, and subtask framing go in the user
+    message, not the system message — this is part of "what to do right now",
+    and models respond more directly and literally to the user turn. The same
+    content buried mid-way through a long system prompt is easy to treat as
+    optional background rather than a binding constraint (see the case-828
+    postmortem: subtasks repeatedly ignored completed prior results and
+    re-fetched data from scratch until manually interrupted).
+    goal is placed last, keeping "what to do now" in the most salient position.
+    """
+    parts = []
     if task_context.strip():
-        parts.append(f"\n\n{task_context}")
+        parts.append(task_context.strip())
     if parent_goal:
         parts.append(
-            f"\n\n=== Subtask execution mode ===\n"
-            f"You are executing an atomic subtask that has already been decomposed; the parent task is: {parent_goal}\n"
-            f"Focus on completing only the one subtask specified in the user message, calling tools directly. Do not decompose further."
+            f"=== Subtask execution mode ===\n"
+            f"This is one atomic subtask from an already-decomposed plan; the parent task is: {parent_goal}\n"
+            f"Complete only the task below via tool calls. Do not decompose further."
         )
-    return "\n".join(parts)
+    parts.append(f"=== Your task ===\n{goal}")
+    return "\n\n".join(parts)
 
 
 def _log(task: dict, text: str) -> None:

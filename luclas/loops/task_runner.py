@@ -58,12 +58,13 @@ class TaskRunner:
         record_id   = uuid.uuid4().hex[:12]
         started     = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         mem_id      = [None]   # list 让递归内层可以修改
+        aar_mem_ids: list[str] = []   # 本次任务过程中写入的 AAR 经验记忆，供反馈附加
 
         self._persist(record_id, root, "running", "", [], started, display_goal)
 
         try:
             history_ctx = self.task_memory.build_context(goal)
-            self._run_node(root, root, record_id, started, history_ctx, mem_id, depth=0)
+            self._run_node(root, root, record_id, started, history_ctx, mem_id, aar_mem_ids, depth=0)
         except KeyboardInterrupt:
             self._mark_interrupted(root)
             self._persist(record_id, root, "active", T.sentinel_user_interrupted(), [], started, display_goal)
@@ -74,7 +75,7 @@ class TaskRunner:
         if on_result:
             on_result(final)   # show the result to the user before asking for feedback
         summary, artifacts = self._post_process(goal, final)
-        feedback_decision = self._maybe_collect_feedback(display_goal, summary, final, root, started)
+        feedback_decision = self._maybe_collect_feedback(display_goal, summary, final, root, started, aar_mem_ids)
         self._persist(record_id, root, "active", summary, artifacts, started, display_goal)
 
         self._cleanup_mem(mem_id)
@@ -98,7 +99,7 @@ class TaskRunner:
     # ── 递归核心 ─────────────────────────────────────────
 
     def _run_node(self, node: dict, root: dict, record_id: str, started: str,
-                  history_ctx: str, mem_id: list, depth: int,
+                  history_ctx: str, mem_id: list, aar_mem_ids: list, depth: int,
                   ancestor_goals: list[str] | None = None,
                   prior_results: list[dict] | None = None) -> None:
         indent   = "  " * depth
@@ -117,7 +118,7 @@ class TaskRunner:
             child_prior: list[dict] = []          # 本层已完成的兄弟结果
             for child in node["subtasks"]:
                 self._run_node(child, root, record_id, started, history_ctx,
-                               mem_id, depth + 1, child_ancestors, child_prior)
+                               mem_id, aar_mem_ids, depth + 1, child_ancestors, child_prior)
                 # 子节点完成后，把完整结果加入兄弟列表供下一个子节点使用
                 if child["status"] in ("done", "failed"):
                     child_prior.append({"goal": child["goal"], "result": child["result"]})
@@ -141,7 +142,9 @@ class TaskRunner:
             print(f"{indent}  {icon} {node['goal'][:60]}")
 
             # P0-3: 原子任务完成后自动执行 AAR
-            self._auto_aar(node, ancestors)
+            aar_id = self._auto_aar(node, ancestors)
+            if aar_id:
+                aar_mem_ids.append(aar_id)
         # 每个节点完成后持久化
         self._save(record_id, root, started)
         mem_id[0] = self._write_mem(root, mem_id[0])
@@ -217,9 +220,13 @@ class TaskRunner:
             f"=== Current execution point ===\n{path}\n\n"
             + prior_section +
             "[Execution rules] This is an atomic subtask produced by the task planner.\n"
-            "1. Check the 'completed prior step results' above first, and reuse that data "
-            "(paths, cookies, IDs, etc.) directly — do not redo steps already completed.\n"
-            "2. Use tools to complete this task. Do not decompose it further.\n"
+            "1. The 'completed prior step results' above may already contain the actual facts "
+            "you need for this task — data, figures, dates, names, case details, etc., not just "
+            "technical artifacts like paths/cookies/IDs. Extract and reuse them directly. Only "
+            "use tools to fetch information that is genuinely NOT already covered above.\n"
+            "2. Do not redo steps already completed above (e.g. re-querying a system that was "
+            "already queried, re-deriving a fact already stated).\n"
+            "3. Use tools to complete this task. Do not decompose it further.\n"
         )
         # 重新拉取最新上下文（任务执行中可能写入了新记忆）
         fresh_ctx = self.task_memory.build_context(node["goal"])
@@ -256,11 +263,11 @@ class TaskRunner:
 
 
 
-    def _auto_aar(self, node: dict, ancestors: list[str]) -> None:
-        """P0-3: 原子任务完成后自动执行 After Action Review。"""
+    def _auto_aar(self, node: dict, ancestors: list[str]) -> str | None:
+        """P0-3: 原子任务完成后自动执行 After Action Review。返回写入的记忆 id（若有）。"""
         log = node.get("result", "")
         if not log or len(log) < 50:
-            return  # 结果太短，跳过 AAR
+            return None  # 结果太短，跳过 AAR
 
         goal = node["goal"]
         status = node["status"]
@@ -301,8 +308,10 @@ class TaskRunner:
                     )
                     brain_icon = ok("\U0001f9e0")
                     print(f"{'  ' * (len(ancestors) + 1)}{brain_icon} {T.aar_saved(mid)}")
+                    return mid
         except Exception:
             pass  # AAR 失败不应影响主任务
+        return None
 
     def _synthesize(self, node: dict) -> str:
         lines = [
@@ -379,7 +388,7 @@ class TaskRunner:
         return result[:80], []
 
     def _maybe_collect_feedback(self, goal: str, summary: str, final: str,
-                                root: dict, started: str) -> dict | None:
+                                root: dict, started: str, aar_mem_ids: list[str]) -> dict | None:
         """Ask the user for feedback on the completed task, only when it's warranted
         (first time doing this kind of task, mid-task errors/retries, long-running,
         large/multi-step, or an open-ended/subjective result). Routine, quick, clean
@@ -390,8 +399,9 @@ class TaskRunner:
 
         On negative feedback, keeps asking short clarifying questions (capped at
         _MAX_FEEDBACK_ROUNDS) until the user gives a clear instruction to end or to
-        redo the task with a corrected approach. Always ends by writing a consolidated
-        memory entry (transcript + distilled lesson) so the exchange feeds future learning.
+        redo the task with a corrected approach. Always ends by folding the exchange
+        (transcript + distilled lesson) into this task's AAR memories — or a standalone
+        record if it produced none — so it feeds future learning.
 
         Returns a decision dict {"action": "redo"|"end", ...} or None if no feedback
         was collected at all.
@@ -420,7 +430,7 @@ class TaskRunner:
             decision = self._interpret_feedback(goal, summary, transcript)
             rounds  += 1
 
-        self._save_feedback_memory(goal, summary, transcript, decision)
+        self._save_feedback_memory(goal, summary, transcript, decision, aar_mem_ids)
         print(dim(T.feedback_saved()))
         return decision
 
@@ -498,14 +508,23 @@ class TaskRunner:
             pass
         return {"sentiment": "negative", "action": "end"}
 
-    def _save_feedback_memory(self, goal: str, summary: str,
-                              transcript: list[dict], decision: dict) -> None:
+    def _save_feedback_memory(self, goal: str, summary: str, transcript: list[dict],
+                              decision: dict, aar_mem_ids: list[str]) -> None:
+        """Fold feedback into the AAR experience memories this task actually wrote,
+        instead of filing it as a disconnected record. That way a future retrieval
+        of "what we tried" also carries "and here's what the user said about it" —
+        a correction stored off to the side is easy for search to surface the
+        original (now-outdated) lesson without ever showing the fix alongside it.
+
+        Falls back to a standalone feedback memory only when this task produced no
+        AAR memory to attach to (e.g. the result was too short/trivial for _auto_aar
+        to extract anything).
+        """
         convo     = "\n".join(f"Q: {t['q']}\nA: {t['a']}" for t in transcript)
         sentiment = decision.get("sentiment", "negative")
-        content   = f"Task: {goal}\nSummary: {summary}\nSentiment: {sentiment}\nConversation:\n{convo}"
 
         prompt = (
-            f"{content}\n\n"
+            f"Task: {goal}\nSummary: {summary}\nSentiment: {sentiment}\nConversation:\n{convo}\n\n"
             "Extract a concise, reusable lesson from this feedback exchange for future similar tasks "
             "(what to do differently, what the user actually wants, pitfalls to avoid).\n"
             'If there is a lesson worth recording, return: {"experience": "..."}\n'
@@ -521,9 +540,38 @@ class TaskRunner:
                 experience = json.loads(match.group()).get("experience")
         except Exception:
             pass
+
+        feedback_block = f"\n\n---\n[User feedback — {sentiment}]\n{convo}"
+        if experience:
+            feedback_block += f"\nCorrection: {experience}"
+
+        if aar_mem_ids:
+            # Once a human has confirmed or corrected it, the merged record is more
+            # reliable than the agent's own tentative self-assessment (credibility 9)
+            # — bump to the max rather than leaving it as a guess. A correction
+            # (negative) matters more to future retrieval than a confirmation, hence
+            # the higher importance floor.
+            importance_floor = 9 if sentiment == "negative" else 7
+            for mid in aar_mem_ids:
+                record = self.mem_store.get(mid)
+                if not record:
+                    continue
+                tags = list(record.get("tags") or [])
+                for t in ("user_feedback", sentiment):
+                    if t not in tags:
+                        tags.append(t)
+                self.mem_store.update(
+                    mid,
+                    content=record["content"] + feedback_block,
+                    tags=tags,
+                    importance=max(record.get("importance", 5), importance_floor),
+                    credibility=10,
+                )
+            return
+
+        content = f"Task: {goal}\nSummary: {summary}\nSentiment: {sentiment}\nConversation:\n{convo}"
         if experience:
             content += f"\nExtracted lesson: {experience}"
-
         self.mem_store.write(
             content=content,
             type="feedback",

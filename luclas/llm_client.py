@@ -121,8 +121,12 @@ class LLMClient:
 
     def is_available(self) -> bool:
         try:
+            # 5s was too tight for LAN/remote deployments: chat completions get a
+            # 300s timeout and go through fine over the same path, but this cold
+            # health check on process startup would occasionally miss a 5s window
+            # and print "offline" even though the server was reachable and working.
             r = requests.get(f"{self.base_url}/models",
-                             headers=self._headers, timeout=5)
+                             headers=self._headers, timeout=15)
             return r.status_code == 200
         except Exception:
             return False
