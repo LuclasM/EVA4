@@ -541,32 +541,8 @@ class TaskRunner:
         except Exception:
             pass
 
-        feedback_block = f"\n\n---\n[User feedback — {sentiment}]\n{convo}"
-        if experience:
-            feedback_block += f"\nCorrection: {experience}"
-
         if aar_mem_ids:
-            # Once a human has confirmed or corrected it, the merged record is more
-            # reliable than the agent's own tentative self-assessment (credibility 9)
-            # — bump to the max rather than leaving it as a guess. A correction
-            # (negative) matters more to future retrieval than a confirmation, hence
-            # the higher importance floor.
-            importance_floor = 9 if sentiment == "negative" else 7
-            for mid in aar_mem_ids:
-                record = self.mem_store.get(mid)
-                if not record:
-                    continue
-                tags = list(record.get("tags") or [])
-                for t in ("user_feedback", sentiment):
-                    if t not in tags:
-                        tags.append(t)
-                self.mem_store.update(
-                    mid,
-                    content=record["content"] + feedback_block,
-                    tags=tags,
-                    importance=max(record.get("importance", 5), importance_floor),
-                    credibility=10,
-                )
+            self._apply_targeted_feedback(goal, summary, convo, sentiment, experience, aar_mem_ids)
             return
 
         content = f"Task: {goal}\nSummary: {summary}\nSentiment: {sentiment}\nConversation:\n{convo}"
@@ -580,6 +556,86 @@ class TaskRunner:
             source="user_instruction",   # directly stated by the user
             credibility=9,
         )
+
+    def _apply_targeted_feedback(self, goal: str, summary: str, convo: str, sentiment: str,
+                                 experience: str | None, aar_mem_ids: list[str]) -> None:
+        """Feedback about an overall multi-step task doesn't indict every step that
+        ran — a specific step's approach can be confirmed as correct even while the
+        final result needs work (e.g. data collection was fine, the write-up wasn't).
+        Blindly tagging every AAR memory from this task as "negative" would misrepresent
+        the steps that were actually fine, and blindly tagging them all "positive" would
+        hide a real correction. Ask the LLM to judge each step's memory against the
+        feedback individually instead of applying one verdict to all of them.
+        """
+        records = {}
+        for mid in aar_mem_ids:
+            r = self.mem_store.get(mid)
+            if r:
+                records[mid] = r
+        if not records:
+            return
+
+        steps_block = "\n\n".join(
+            f"[id={mid}] Step: {r['content'][:400]}" for mid, r in records.items()
+        )
+        prompt = (
+            f"Task: {goal}\nOverall result: {summary}\nOverall sentiment: {sentiment}\n"
+            f"Feedback conversation:\n{convo}\n\n"
+            f"This task ran the following steps, each already recorded as its own experience "
+            f"memory:\n\n{steps_block}\n\n"
+            "The feedback is about the OVERALL result, but may not apply equally to every "
+            "step — a specific step's approach can be correct even if the final result needs "
+            "work, or vice versa. For EACH step id above, decide:\n"
+            '- "confirmed": the feedback shows this specific step\'s approach was fine\n'
+            '- "corrected": the feedback specifically points out a problem with this step, '
+            "or gives a correction that applies to it\n"
+            '- "unrelated": the feedback doesn\'t say anything about this specific step\n\n'
+            'Return JSON only: {"steps": [{"id": "...", "verdict": "confirmed|corrected|unrelated", '
+            '"note": "short explanation, or the correction if corrected — omit if unrelated"}]}'
+        )
+        verdicts = None
+        try:
+            resp    = self.llm.chat([{"role": "user", "content": prompt}], temperature=0.1, max_tokens=600)
+            cleaned = re.sub(r'```[a-z]*\n?', '', resp).strip()
+            match   = re.search(r'\{.*\}', cleaned, re.DOTALL)
+            if match:
+                verdicts = json.loads(match.group()).get("steps")
+        except Exception:
+            pass
+
+        if not isinstance(verdicts, list) or not verdicts:
+            # Couldn't tell which steps the feedback applies to — fall back to
+            # applying the overall sentiment to all of them rather than silently
+            # dropping the feedback.
+            verdicts = [
+                {"id": mid, "verdict": "corrected" if sentiment == "negative" else "confirmed",
+                 "note": experience or ""}
+                for mid in records
+            ]
+
+        by_id = {v.get("id"): v for v in verdicts if isinstance(v, dict)}
+        for mid, record in records.items():
+            v = by_id.get(mid)
+            if not v or v.get("verdict") == "unrelated":
+                continue
+            verdict = v.get("verdict", "corrected")
+            note    = v.get("note") or experience or ""
+            tag     = "confirmed" if verdict == "confirmed" else "corrected"
+            label   = "Confirmed correct" if verdict == "confirmed" else "Correction"
+            feedback_block = (f"\n\n---\n[User feedback — {tag}]\n{label}: {note}" if note
+                              else f"\n\n---\n[User feedback — {tag}]")
+            tags = list(record.get("tags") or [])
+            for t in ("user_feedback", tag):
+                if t not in tags:
+                    tags.append(t)
+            importance_floor = 9 if verdict == "corrected" else 7
+            self.mem_store.update(
+                mid,
+                content=record["content"] + feedback_block,
+                tags=tags,
+                importance=max(record.get("importance", 5), importance_floor),
+                credibility=10,
+            )
 
     def _count_nodes(self, node: dict) -> int:
         return 1 + sum(self._count_nodes(st) for st in node.get("subtasks", []))
