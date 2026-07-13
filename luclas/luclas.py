@@ -1,4 +1,4 @@
-__version__ = "0.1.13"
+__version__ = "0.2.1"
 
 import builtins
 import datetime
@@ -11,7 +11,7 @@ import uuid
 
 from config import (CODE_DIR, BASE_DIR, DB_PATH, DATA_DIR, CORE_PATH, CORE_LOCAL_PATH, CORE_HIST, REFLECT_PATH,
                     RAW_DIR, SESSION_DIR, LLM_BASE_URL, LLM_MODEL, MODELS_CONFIG_PATH,
-                    AGENT_MAX_ITERATIONS, VERSION, VERSION_DATE)
+                    AGENT_MAX_ITERATIONS, VERSION_DATE)
 from llm_client import LLMClient
 from llm_router import ModelRouter, load_models
 
@@ -142,7 +142,7 @@ def main():
 
     print(head(T.ascii_banner()))
     print(f"  {bold(T.author_line())}")
-    print(f"  {dim(T.version_line(VERSION, VERSION_DATE))}")
+    print(f"  {dim(T.version_line(__version__, VERSION_DATE))}")
     print(f"\n  {T.identity_line()}")
     print(f"  {dim(T.tips_line())}")
     print(f"\n{dim(T.startup_hint())}")
@@ -744,5 +744,9 @@ if __name__ == "__main__":
         _run_headless(_reflect_goal())
     elif args and args[0] == "--run" and len(args) > 1:
         _run_headless(args[1])
+    elif not args and not os.path.isfile(os.path.join(BASE_DIR, ".env")):
+        print(warn(T.first_run_setup_hint()))
+        from setup import run as _run_setup
+        _run_setup(BASE_DIR)
     else:
         main()

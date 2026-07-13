@@ -59,11 +59,12 @@ Luclas grows faster with real work than with test questions.
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # set LUC_LLM_BASE_URL and LUC_LLM_MODEL
 ./luclas.sh
 ```
 
-On first run Luclas generates its own `data/core.md` by asking the LLM to write an initial policy. From that point on, it owns the file.
+No `.env` yet? First run launches the setup wizard automatically (LLM config, messaging platform, usage preferences) instead of starting cold. You can also run it manually any time with `luclas setup`.
+
+After setup, Luclas generates its own `data/core.md` by asking the LLM to write an initial policy. From that point on, it owns the file.
 
 ## Configuration
 

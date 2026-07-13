@@ -268,6 +268,13 @@ def core_missing() -> str:
     return _pick("⚠ core.md not found, generating initial policy…", "⚠ 未找到 core.md，正在生成初始策略…")
 
 
+def first_run_setup_hint() -> str:
+    return _pick(
+        "⚠ No .env found — this looks like a first run. Launching setup…",
+        "⚠ 未找到 .env，看起来是第一次运行——正在启动配置向导…",
+    )
+
+
 def online() -> str:
     return _pick("online", "在线")
 

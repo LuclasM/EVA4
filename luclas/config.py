@@ -32,11 +32,8 @@ def _git(args: list[str]) -> str:
         return ""
 
 
-_VERSION_BASE = "1.0"
-_build        = _git(["rev-list", "--count", "HEAD"]) or "0"
 _date         = _git(["log", "-1", "--format=%cd", "--date=short"]) or "unknown"
 
-VERSION      = f"{_VERSION_BASE}.{_build}"
 VERSION_DATE = _date
 DATA_DIR     = os.path.join(BASE_DIR, "data")
 DB_PATH      = os.path.join(DATA_DIR, "luclas.db")
