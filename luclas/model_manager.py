@@ -19,7 +19,7 @@ import tty
 from typing import Optional
 
 from config import MODELS_CONFIG_PATH
-from local_llm_detect import fetch_openai_models
+from local_llm_detect import fetch_openai_models, scan_local_llm_servers, DETECTED_PROVIDER_LABELS
 
 
 # ── ANSI helpers (used outside curses in form / picker) ──────
@@ -252,11 +252,34 @@ def _form_screen(data: dict, is_new: bool, idx: int) -> bool:
     if not id_val:
         return False
 
-    base_url = _prompt("Base URL", data.get("base_url", "http://localhost:11434/v1"))
+    base_url = ""
+    api_key  = ""
+    if is_new:
+        sys.stdout.write("  Scanning for locally running LLM servers…")
+        sys.stdout.flush()
+        detected = scan_local_llm_servers()
+        sys.stdout.write(f" found {len(detected)}.\n" if detected else " none found.\n")
+        if detected:
+            labels = [
+                f"✓ Detected: {DETECTED_PROVIDER_LABELS.get(d['provider'], 'Local server')} "
+                f"at {d['base_url']}  ({len(d['models'])} model(s))"
+                for d in detected
+            ]
+            by_label = dict(zip(labels, detected))
+            picked = _pick_list(labels + ["-- enter manually --"], "Select a detected server, or enter manually")
+            sys.stdout.write(_CLR)
+            sys.stdout.write(f"  {_b(title)}\n\n")
+            sys.stdout.flush()
+            if picked and picked in by_label:
+                d = by_label[picked]
+                base_url = d["base_url"]
+                api_key  = "none"
+
+    base_url = _prompt("Base URL", base_url or data.get("base_url", "http://localhost:11434/v1"))
     if not base_url:
         return False
 
-    api_key  = _prompt("API Key  (or 'none')", data.get("api_key", "none"))
+    api_key  = _prompt("API Key  (or 'none')", api_key or data.get("api_key", "none"))
 
     # ── Auto-connect ──────────────────────────────────────────
     sys.stdout.write(f"\n  Connecting to {_c(base_url)} ...\n")

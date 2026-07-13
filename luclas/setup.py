@@ -8,7 +8,8 @@ and usage preferences. Writes results to .env and data/user_direction.md.
 import os
 import sys
 
-from local_llm_detect import fetch_openai_models, fetch_ollama_models, scan_local_llm_servers
+from local_llm_detect import (fetch_openai_models, fetch_ollama_models, scan_local_llm_servers,
+                              DETECTED_PROVIDER_LABELS)
 
 
 # ── I/O helpers ──────────────────────────────────────────────────────────────
@@ -145,13 +146,6 @@ def _pick_model(provider: str, base_url: str, api_key: str = "") -> str:
     return choice
 
 
-_DETECTED_PROVIDER_LABELS = {
-    "ollama":   "Ollama",
-    "lmstudio": "LM Studio",
-    "local":    "Local server",
-}
-
-
 def _step_llm() -> dict[str, str]:
     _section("Step 1 · LLM Configuration")
 
@@ -164,7 +158,7 @@ def _step_llm() -> dict[str, str]:
     for i, d in enumerate(detected):
         key = f"__detected_{i}__"
         label = (
-            f"✓ Detected: {_DETECTED_PROVIDER_LABELS.get(d['provider'], 'Local server')} "
+            f"✓ Detected: {DETECTED_PROVIDER_LABELS.get(d['provider'], 'Local server')} "
             f"at {d['base_url']}  ({len(d['models'])} model(s))"
         )
         detected_options.append((key, label))

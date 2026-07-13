@@ -18,6 +18,12 @@ _SCAN_TIMEOUT = 0.6   # seconds — the broad local-port scan (many parallel pro
 
 OLLAMA_PORT   = 11434
 LMSTUDIO_PORT = 1234
+
+DETECTED_PROVIDER_LABELS = {
+    "ollama":   "Ollama",
+    "lmstudio": "LM Studio",
+    "local":    "Local server",
+}
 # vLLM has no fixed default port (it's whatever --port the user launched it
 # with), so it can't be probed like Ollama/LM Studio — scan a common range
 # of ports instead and treat anything that answers the OpenAI schema as a
