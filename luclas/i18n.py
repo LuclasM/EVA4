@@ -153,6 +153,7 @@ def help_text() -> str:
   /models edit            Interactive model manager (add/edit/delete)
   /reflect                Full strategic reflection — improves core.md methodology
   /schedule               Manage scheduled tasks
+  /api restart            Restart the background API service (messaging adapters)
   /reset                  Clear all memory and tasks (requires confirmation)
   /q  /quit               Quit
 """,
@@ -174,6 +175,7 @@ def help_text() -> str:
   /models edit            交互式模型管理（增删改，上下箭头导航）
   /reflect                全面反思，改进 core.md 方法论
   /schedule               管理定时任务
+  /api restart            重启后台 API 服务（消息平台走的是这个）
   /reset                  清除所有记忆和任务（需确认）
   /q  /quit               退出
 """,
@@ -332,6 +334,29 @@ def unknown_command(cmd: str) -> str:
 
 def log_usage() -> str:
     return _pick("✗ usage: /log <task_id>", "✗ 用法：/log <task_id>")
+
+
+def api_usage() -> str:
+    return _pick("✗ usage: /api restart", "✗ 用法：/api restart")
+
+
+def api_restart_ok(service: str) -> str:
+    return _pick(f"✓ {service} restarted", f"✓ {service} 已重启")
+
+
+def api_restart_no_systemctl() -> str:
+    return _pick(
+        "✗ systemctl not found — is this a systemd-managed deployment?",
+        "✗ 找不到 systemctl —— 这个部署是用 systemd 管理的吗？",
+    )
+
+
+def api_restart_timeout() -> str:
+    return _pick("✗ restart command timed out", "✗ 重启命令超时")
+
+
+def api_restart_failed(service: str, detail: str) -> str:
+    return _pick(f"✗ failed to restart {service}: {detail}", f"✗ 重启 {service} 失败：{detail}")
 
 
 # ── status / whoami ─────────────────────────────────────────────────────────

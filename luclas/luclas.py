@@ -1,4 +1,4 @@
-__version__ = "0.2.6"
+__version__ = "0.2.7"
 
 import builtins
 import datetime
@@ -266,6 +266,13 @@ def _handle_slash(line: str, llm, store, task_memory, schemas, fns, runner=None)
 
     elif cmd == "schedule":
         _schedule_cmd(sub, rest)
+
+    elif cmd == "api":
+        if sub == "restart":
+            restarted, msg = _restart_api_service()
+            print((ok(msg) if restarted else err(msg)))
+        else:
+            print(err(T.api_usage()))
 
     else:
         print(warn(T.unknown_command(cmd)))
@@ -723,6 +730,26 @@ def _ensure_cron() -> None:
         print(ok("✓ cron_runner registered in crontab"))
 
 
+def _restart_api_service() -> tuple[bool, str]:
+    """Restart the background systemd --user service running api.py (the HTTP API
+    that messaging adapters talk to). Returns (ok, message).
+    """
+    import subprocess
+    from config import API_SERVICE_NAME
+    try:
+        subprocess.run(
+            ["systemctl", "--user", "restart", API_SERVICE_NAME],
+            check=True, capture_output=True, text=True, timeout=15,
+        )
+        return True, T.api_restart_ok(API_SERVICE_NAME)
+    except FileNotFoundError:
+        return False, T.api_restart_no_systemctl()
+    except subprocess.TimeoutExpired:
+        return False, T.api_restart_timeout()
+    except subprocess.CalledProcessError as e:
+        return False, T.api_restart_failed(API_SERVICE_NAME, (e.stderr or str(e)).strip())
+
+
 def _stop_print_logger():
     global _log_file
     import builtins as _b
@@ -744,6 +771,10 @@ if __name__ == "__main__":
         _run_headless(_reflect_goal())
     elif args and args[0] == "--run" and len(args) > 1:
         _run_headless(args[1])
+    elif args and args[0] == "api" and len(args) > 1 and args[1] == "restart":
+        restarted, msg = _restart_api_service()
+        print(ok(msg) if restarted else err(msg))
+        sys.exit(0 if restarted else 1)
     elif not args and not os.path.isfile(os.path.join(BASE_DIR, ".env")):
         print(warn(T.first_run_setup_hint()))
         from setup import run as _run_setup

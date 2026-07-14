@@ -60,6 +60,9 @@ ASK_USER_TIMEOUT_SECONDS = 600
 
 MODELS_CONFIG_PATH = os.path.join(DATA_DIR, "models.json")
 
+# systemd --user service running api.py, restarted via `luclas api restart` / `/api restart`
+API_SERVICE_NAME = os.environ.get("LUC_API_SERVICE_NAME", "luclas-api.service")
+
 EMBED_MODEL = os.environ.get(
     "LUC_EMBED_MODEL",
     "BAAI/bge-small-zh-v1.5" if LANG == "zh" else "paraphrase-multilingual-MiniLM-L12-v2",
