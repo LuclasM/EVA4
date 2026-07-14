@@ -1,4 +1,4 @@
-# EVA4 Reflection Protocol
+# Luclas Reflection Protocol
 
 ## Goal
 
@@ -7,10 +7,12 @@ rules are ignored in practice, which are unclear, and which patterns should be f
 
 ## Data collection (mandatory — do not skip)
 
-1. **Task statistics** (python_exec):
+1. **Task statistics** (python_exec; note: the standalone `tasks` table was removed
+   in the 2026-07 migration — its status field was folded into `task_records`.
+   Querying `tasks` now fails with "no such table: tasks".):
    ```sql
-   SELECT status, COUNT(*) as n FROM tasks GROUP BY status;
-   SELECT goal, status, created_at FROM tasks ORDER BY created_at DESC LIMIT 30;
+   SELECT status, COUNT(*) as n FROM task_records GROUP BY status;
+   SELECT goal, status, created_at FROM task_records ORDER BY created_at DESC LIMIT 30;
    ```
 
 2. **AAR experiences** (memory_search):
